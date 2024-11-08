@@ -4,6 +4,8 @@ project(CXX_LEARNING CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+
 include(FetchContent)
 
 FetchContent_Declare(
@@ -22,4 +24,21 @@ FetchContent_MakeAvailable(
 
 find_package(OpenMP REQUIRED)
         
-add_subdirectory(FalseSharing)
+MACRO(SUBDIRLIST result curdir)
+  FILE(GLOB children RELATIVE ${curdir} ${curdir}/*)
+  SET(dirlist "")
+  FOREACH(child ${children})
+    IF(IS_DIRECTORY ${curdir}/${child})
+      LIST(APPEND dirlist ${child})
+    ENDIF()
+  ENDFOREACH()
+  SET(${result} ${dirlist})
+ENDMACRO()
+
+SUBDIRLIST(SUBDIRS ${CMAKE_CURRENT_SOURCE_DIR})
+
+FOREACH(subdir ${SUBDIRS})
+        if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt)
+                ADD_SUBDIRECTORY(${subdir})
+        endif()
+ENDFOREACH()
