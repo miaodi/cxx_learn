@@ -21,6 +21,19 @@ FetchContent_Declare(googlebenchmark
 FetchContent_MakeAvailable(
         googletest
         googlebenchmark)
+        
+if(USE_CUDA)
+  enable_language(CUDA)
+  set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
+  set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+  set(CMAKE_CUDA_EXTENSIONS OFF)
+  find_package(cudss REQUIRED)
+endif(USE_CUDA)
+
+configure_file(
+  "${CMAKE_SOURCE_DIR}/cmake/config.h.in"
+  "${CMAKE_BINARY_DIR}/config.h")
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 find_package(OpenMP REQUIRED)
         
