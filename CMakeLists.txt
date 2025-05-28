@@ -22,12 +22,15 @@ FetchContent_MakeAvailable(
         googletest
         googlebenchmark)
         
+option(USE_CUDA "Use cuda (cudss)" OFF)
+
 if(USE_CUDA)
+  find_package(CUDA REQUIRED)
   enable_language(CUDA)
-  set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
+  set(CMAKE_CUDA_STANDARD 17)
   set(CMAKE_CUDA_STANDARD_REQUIRED ON)
   set(CMAKE_CUDA_EXTENSIONS OFF)
-  find_package(cudss REQUIRED)
+  # find_package(cudss REQUIRED)
 endif(USE_CUDA)
 
 configure_file(
