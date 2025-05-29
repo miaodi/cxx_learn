@@ -1,4 +1,3 @@
-#include <../config.h>
 #include <algorithm>
 #include <atomic>
 #include <benchmark/benchmark.h>
@@ -42,48 +41,13 @@ static void Serial_Permute(benchmark::State &state)
                           int64_t(state.range(0)) * 8);
 }
 
-BENCHMARK(Serial_Permute)->RangeMultiplier(2)->Range(1 << 4, 1 << 28);
+BENCHMARK(Serial_Permute)->RangeMultiplier(4)->Range(1 << 4, 1 << 30);
 
-#ifdef USE_CUDA
-#define MAX_THREADS 1024
+static const int threads = 8;
 
-void permute_control(int n, int &blocks, int &threads,
-                     int maxThreads = MAX_THREADS)
+static void Parallel_Permute(benchmark::State &state)
 {
-  threads = std::min(static_cast<int>(pow(2, ceil(log2(n)))), MAX_THREADS);
-  blocks = (n + threads - 1) / threads;
-}
-
-template <typename T, bool backward>
-__global__ void permute_core(const T *in, T *out, int *perm, int length)
-{
-  unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-  /*
-   * Return the number of valid entries found
-   */
-  if (idx < length)
-  {
-    if (backward)
-      out[idx] = in[perm[idx]];
-    else
-      out[perm[idx]] = in[idx];
-  }
-}
-
-template <typename T, bool backward>
-void permute(const T *in, T *out, int *indices, int length)
-{
-  int threads;
-  int blocks;
-
-  permute_control(length, blocks, threads);
-  permute_core<T, backward>
-      <<<blocks, threads>>>(in, out, indices, length);
-}
-
-static void Cuda_Permute(benchmark::State &state)
-{
+  omp_set_num_threads(threads);
   // First create an instance of an engine.
   std::random_device rnd_device;
   // Specify the engine and distribution.
@@ -102,28 +66,18 @@ static void Cuda_Permute(benchmark::State &state)
   std::vector<double> from(size);
   std::vector<double> to(size);
   std::generate(from.begin(), from.end(), gen);
-  double *device_from;
-  double *device_to;
-  int *perm_device;
-  cudaMalloc(&device_from, size * sizeof(double));
-  cudaMalloc(&device_to, size * sizeof(double));
-  cudaMalloc(&perm_device, size * sizeof(int));
-
-  cudaMemcpy(device_from, from.data(), size * sizeof(double),
-             cudaMemcpyHostToDevice);
-  cudaMemcpy(perm_device, perm.data(), size * sizeof(int),
-             cudaMemcpyHostToDevice);
 
   for (auto _ : state)
   {
-    permute<double, false>(device_from, device_to,
-                           perm_device, size);
-    std::swap(device_from, device_to);
+#pragma omp parallel for
+    for (size_t i = 0; i < size; i++)
+      to[perm[i]] = from[i];
+    swap(from, to);
   }
   state.SetBytesProcessed(int64_t(state.iterations()) *
                           int64_t(state.range(0)) * 8);
 }
 
-BENCHMARK(Cuda_Permute)->RangeMultiplier(2)->Range(1 << 4, 1 << 28);
-#endif
+BENCHMARK(Parallel_Permute)->RangeMultiplier(4)->Range(1 << 4, 1 << 30);
+
 BENCHMARK_MAIN();
