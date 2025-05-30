@@ -1,72 +1,18 @@
-#include <../config.h>
 #include <algorithm>
 #include <benchmark/benchmark.h>
 #include <iostream>
-#include <iterator>
-#include <new>
-#include <numeric>
+#include <permute.hpp>
 #include <random>
-#include <vector>
-#include <cmath>
-
-#ifdef USE_CUDA
-#define MAX_THREADS 1024
-
-void permute_control(int n, int &blocks, int &threads,
-                     int maxThreads = MAX_THREADS)
-{
-  threads = std::min(static_cast<int>(pow(2, ceil(log2(n)))), MAX_THREADS);
-  blocks = (n + threads - 1) / threads;
-}
-
-template <typename T, bool backward>
-__global__ void permute_core(const T *in, T *out, int *perm, int length)
-{
-  unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-  /*
-   * Return the number of valid entries found
-   */
-  if (idx < length)
-  {
-    if (backward)
-      out[idx] = in[perm[idx]];
-    else
-      out[perm[idx]] = in[idx];
-  }
-}
-
-template <typename T, bool backward>
-void permute(const T *in, T *out, int *indices, int length)
-{
-  int threads;
-  int blocks;
-
-  permute_control(length, blocks, threads);
-  permute_core<T, backward>
-      <<<blocks, threads>>>(in, out, indices, length);
-}
 
 static void Cuda_Permute(benchmark::State &state)
 {
-  // First create an instance of an engine.
-  std::random_device rnd_device;
-  // Specify the engine and distribution.
-  std::mt19937 mersenne_engine{rnd_device()}; // Generates random integers
-  std::uniform_real_distribution<double> dist{0, 1};
-  auto gen = [&]()
-  { return dist(mersenne_engine); };
-  const size_t size = state.range(0);
+  size_t size = state.range(0);
   std::vector<int> perm(size);
-  for (size_t i = 0; i < size; ++i)
-  {
-    perm[i] = i;
-  }
-  std::shuffle(perm.begin(), perm.end(), mersenne_engine);
+  permutation_generate(perm.data(), size);
 
   std::vector<double> from(size);
   std::vector<double> to(size);
-  std::generate(from.begin(), from.end(), gen);
+  random_vector_generate(from.data(), size);
   double *device_from;
   double *device_to;
   int *perm_device;
@@ -80,8 +26,8 @@ static void Cuda_Permute(benchmark::State &state)
              cudaMemcpyHostToDevice);
   for (auto _ : state)
   {
-    permute<double, false>(device_from, device_to,
-                           perm_device, size);
+    permute_cuda<double, false>(device_from, device_to,
+                                perm_device, size);
     std::swap(device_from, device_to);
   }
   state.SetBytesProcessed(int64_t(state.iterations()) *
@@ -91,6 +37,5 @@ static void Cuda_Permute(benchmark::State &state)
   cudaFree(perm_device);
 }
 
-BENCHMARK(Cuda_Permute)->RangeMultiplier(4)->Range(1 << 4, 1 << 30);
+BENCHMARK(Cuda_Permute)->RangeMultiplier(2)->Range(1 << 8, 1 << 24);
 BENCHMARK_MAIN();
-#endif

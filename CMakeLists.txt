@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(CXX_LEARNING CXX)
+project(CXX_LEARNING)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 if (NOT CMAKE_BUILD_TYPE MATCHES Debug)
@@ -25,11 +25,10 @@ FetchContent_MakeAvailable(
         googletest
         googlebenchmark)
         
-option(USE_CUDA "Use cuda (cudss)" OFF)
+option(USE_CUDA "Use cuda" OFF)
 
 if(USE_CUDA)
-  find_package(CUDA REQUIRED)
-  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
   set(CMAKE_CUDA_STANDARD 17)
   set(CMAKE_CUDA_STANDARD_REQUIRED ON)
   set(CMAKE_CUDA_EXTENSIONS OFF)
