@@ -9,12 +9,13 @@ add_executable(ElementWiseProductBench ${ElementWiseProductBench_SRC})
 # set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME ${ONE_BENCH_EXEC}) 
 target_link_libraries(ElementWiseProductBench PRIVATE ${DEPENDENCIES})
 
+set(CrossProductLenBench_SRC CrossProductLenBench.cpp)
+add_executable(CrossProductLenBench ${CrossProductLenBench_SRC})
+target_link_libraries(CrossProductLenBench PRIVATE ${DEPENDENCIES})
+
+
 set(CrossProductBench_SRC CrossProductBench.cpp)
-
-set(DEPENDENCIES benchmark::benchmark)
-
 add_executable(CrossProductBench ${CrossProductBench_SRC})
-# set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME ${ONE_BENCH_EXEC}) 
 target_link_libraries(CrossProductBench PRIVATE ${DEPENDENCIES})
 
 set(fmaBench_SRC fmaBench.cpp)

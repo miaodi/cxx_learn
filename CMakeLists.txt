@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.18)
 
 project(CXX_LEARNING)
 
@@ -11,27 +11,18 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
   add_definitions(-DNDEBUG)
 endif()
 
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -mavx2 -mfma  -march=native")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -mfma -mavx2")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -S -fverbose-asm")
+# include(CheckCXXCompilerFlag)
+# check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
 
-include(CheckCXXSourceRuns)
-check_cxx_source_runs("
-  #include <immintrin.h>
-  int main() {
-    __m512d a = _mm512_set1_pd(1.0);
-    __m512d b = _mm512_set1_pd(2.0);
-    __m512d c = _mm512_add_pd(a, b);
-    return (_mm512_reduce_add_pd(c) == 24.0) ? 0 : 1;
-  }
-" AVX512_SUPPORTED)
-
-if(AVX512_SUPPORTED)
-  message(STATUS "AVX512 is supported")
-  add_definitions(-DAVX512_SUPPORTED)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx512f")
-else()
-  message(STATUS "AVX512 is not supported")
-endif()
+# if(COMPILER_SUPPORTS_AVX512F)
+#   message(STATUS "AVX512 is supported")
+#   add_definitions(-DAVX512_SUPPORTED)
+#   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx512f")
+# else()
+#   message(STATUS "AVX512 is not supported")
+# endif()
 
 include(FetchContent)
 
