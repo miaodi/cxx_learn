@@ -37,5 +37,5 @@ static void Cuda_Permute(benchmark::State &state)
   cudaFree(perm_device);
 }
 
-BENCHMARK(Cuda_Permute)->RangeMultiplier(2)->Range(1 << 8, 1 << 24);
+BENCHMARK(Cuda_Permute)->RangeMultiplier(2)->Range(1 << 8, 1 << 28);
 BENCHMARK_MAIN();
