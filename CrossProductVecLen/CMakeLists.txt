@@ -3,7 +3,11 @@ project(CrossProductVecLen CXX)
 
 set(ElementWiseProductBench_SRC ElementWiseProductBench.cpp)
 
-set(DEPENDENCIES benchmark::benchmark)
+add_library(VectorOps STATIC
+  VectorOps.cpp
+)
+
+set(DEPENDENCIES benchmark::benchmark GTest::gtest_main GTest::gmock_main  OpenMP::OpenMP_CXX VectorOps)
 
 add_executable(ElementWiseProductBench ${ElementWiseProductBench_SRC})
 # set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME ${ONE_BENCH_EXEC}) 
@@ -14,10 +18,15 @@ add_executable(CrossProductLenBench ${CrossProductLenBench_SRC})
 target_link_libraries(CrossProductLenBench PRIVATE ${DEPENDENCIES})
 
 
-set(CrossProductBench_SRC CrossProductBench.cpp)
-add_executable(CrossProductBench ${CrossProductBench_SRC})
-target_link_libraries(CrossProductBench PRIVATE ${DEPENDENCIES})
+set(VectorOpsBench_SRC VectorOpsBench.cpp)
+add_executable(VectorOpsBench ${VectorOpsBench_SRC})
+target_link_libraries(VectorOpsBench PRIVATE ${DEPENDENCIES})
 
 set(fmaBench_SRC fmaBench.cpp)
 add_executable(fmaBench ${fmaBench_SRC})
 target_link_libraries(fmaBench PRIVATE ${DEPENDENCIES})
+
+
+set(TEST_SRC test.cpp)
+add_executable(tests ${TEST_SRC})
+target_link_libraries(tests PRIVATE ${DEPENDENCIES})
