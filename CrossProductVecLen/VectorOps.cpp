@@ -1,5 +1,4 @@
 #include "VectorOps.h"
-#include <immintrin.h> // AVX2/FMA
 
 void CrossProd(double const *a, double const *b, double *cross_prod) {
   cross_prod[0] = a[1] * b[2] - a[2] * b[1];

@@ -13,15 +13,31 @@ endif()
 
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -mfma -mavx2")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -S -fverbose-asm")
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
+# include(CheckCXXCompilerFlag)
+# check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
 
 if(COMPILER_SUPPORTS_AVX512F)
-  message(STATUS "AVX512 is supported")
-  add_definitions(-DAVX512_SUPPORTED)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx512f")
+  include(CheckCXXSourceRuns)
+  set(CMAKE_REQUIRED_FLAGS "-mavx512f")
+  check_cxx_source_runs("
+    #include <immintrin.h>
+    int main() {
+      __m512 a = _mm512_set1_ps(1.0f);
+      (void)a;
+      return 0;
+    }
+  " AVX512_CPU_SUPPORTS)
+  set(CMAKE_REQUIRED_FLAGS "")
+
+  if(AVX512_CPU_SUPPORTS)
+    message(STATUS "AVX512 is supported by both compiler and CPU")
+    add_definitions(-DAVX512_SUPPORTED)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx512f")
+  else()
+    message(STATUS "AVX512 is supported by compiler but not by CPU")
+  endif()
 else()
-  message(STATUS "AVX512 is not supported")
+  message(STATUS "AVX512 is not supported by compiler")
 endif()
 
 include(FetchContent)

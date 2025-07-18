@@ -56,3 +56,27 @@ TEST(DotProduct, AVX2_and_FMA) {
   EXPECT_DOUBLE_EQ(dot1, dot2);
   EXPECT_DOUBLE_EQ(dot1, dot3);
 }
+
+TEST(M256D, BasicOperations) {
+  M256D v1(1.0);
+  M256D v2(2.0);
+  EXPECT_EQ(v1[0], 1.0);
+  EXPECT_EQ(v1[1], 1.0);
+  EXPECT_EQ(v1[2], 1.0);
+  EXPECT_EQ(v2[0], 2.0);
+  EXPECT_EQ(v2[1], 2.0);
+  EXPECT_EQ(v2[2], 2.0);
+
+  M256D v3(1.0, 2.0, 3.0);
+  EXPECT_EQ(v3[0], 1.0);
+  EXPECT_EQ(v3[1], 2.0);
+  EXPECT_EQ(v3[2], 3.0);
+  EXPECT_EQ(v3[3], 0.0); // Last element should be zero
+}
+
+TEST(M256D, DotProduct) {
+  M256D v1(1.0, 2.0, 3.0);
+  M256D v2(4.0, 5.0, 6.0);
+  double result = DotProdAVX2Inline(v1.m256d, v2.m256d);
+  EXPECT_DOUBLE_EQ(result, 1.0 * 4.0 + 2.0 * 5.0 + 3.0 * 6.0); // 32.0
+}

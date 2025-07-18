@@ -43,8 +43,6 @@ static void CrossProdVecLen1BM(benchmark::State &state) {
   }
 }
 
-BENCHMARK(CrossProdVecLen1BM)->RangeMultiplier(2)->Range(1 << 1, 1 << 16);
-
 double CrossProdVecLen2(double const *a, double const *b) {
   double dot_ab = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   double norm2_a = a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
@@ -81,7 +79,6 @@ static void CrossProdVecLen2BM(benchmark::State &state) {
   }
 }
 
-BENCHMARK(CrossProdVecLen2BM)->RangeMultiplier(2)->Range(1 << 1, 1 << 16);
 
 struct alignas(32) AlignedDouble3 {
   double data[4];
@@ -117,8 +114,6 @@ static void CrossProdVecLen2BMAlign(benchmark::State &state) {
     }
   }
 }
-
-BENCHMARK(CrossProdVecLen2BMAlign)->RangeMultiplier(2)->Range(1 << 1, 1 << 16);
 
 double CrossProdVecLen2_avx2_aligned(const double *a, const double *b) {
   // Load 4 aligned doubles from a and b
@@ -179,9 +174,9 @@ static void CrossProdVecLen2BMAlignAVX2(benchmark::State &state) {
     }
   }
 }
-BENCHMARK(CrossProdVecLen2BMAlignAVX2)
-    ->RangeMultiplier(2)
-    ->Range(1 << 1, 1 << 16);
+// You can use a macro or a helper function to apply the same benchmark settings to all tests.
+// Example using a macro:
+
 
 struct alignas(64) AlignedDouble64Aligned {
   double data[8];
@@ -241,9 +236,16 @@ static void CrossProdVecLen2BMAlignAVX512(benchmark::State &state) {
     }
   }
 }
-BENCHMARK(CrossProdVecLen2BMAlignAVX512)
-    ->RangeMultiplier(2)
-    ->Range(1 << 1, 1 << 16);
 #endif
 
+#define APPLY_BENCHMARK_SETTINGS(fn) \
+  BENCHMARK(fn)->RangeMultiplier(2)->Range(1 << 1, 1 << 16);
+
+APPLY_BENCHMARK_SETTINGS(CrossProdVecLen1BM)
+APPLY_BENCHMARK_SETTINGS(CrossProdVecLen2BM)
+APPLY_BENCHMARK_SETTINGS(CrossProdVecLen2BMAlign)
+APPLY_BENCHMARK_SETTINGS(CrossProdVecLen2BMAlignAVX2)
+#ifdef AVX512_SUPPORTED
+APPLY_BENCHMARK_SETTINGS(CrossProdVecLen2BMAlignAVX512)
+#endif
 BENCHMARK_MAIN();
