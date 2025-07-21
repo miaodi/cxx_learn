@@ -33,6 +33,29 @@ static void BM_TwiddleNew(benchmark::State &state) {
 BENCHMARK(BM_TwiddleOrigin)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 BENCHMARK(BM_TwiddleNew)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 
+static void BM_tmcRand(benchmark::State &state) {
+  std::uint32_t seed = 123456789;
+  MCRand::tmcRand gen(seed);
+  for (auto _ : state) {
+    for (size_t i = 0; i < state.range(0); ++i) {
+      benchmark::DoNotOptimize(gen.drand());
+    }
+  }
+}
+
+static void BM_tmcRandAVX2(benchmark::State &state) {
+  std::uint32_t seed = 123456789;
+  MCRand::tmcRandAVX2 gen(seed);
+  for (auto _ : state) {
+    for (size_t i = 0; i < state.range(0); ++i) {
+      benchmark::DoNotOptimize(gen.drand());
+    }
+  }
+}
+
+BENCHMARK(BM_tmcRand)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+BENCHMARK(BM_tmcRandAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+
 // test dynamic cast vs static cast
 
 class Base {
