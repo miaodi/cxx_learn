@@ -307,7 +307,7 @@ static void BM_CrossProd(benchmark::State &state) {
   for (auto _ : state) {
     for (size_t i = 0; i < size; ++i) {
       cross_prod = vec_a[i % vec_size] ^ vec_b[i % vec_size];
-      benchmark::DoNotOptimize(cross_prod.ve);
+      benchmark::DoNotOptimize(cross_prod[0]);
     }
   }
 }
@@ -319,7 +319,7 @@ static void BM_CrossProdAVX2(benchmark::State &state) {
   for (auto _ : state) {
     for (size_t i = 0; i < size; ++i) {
       cross_prod = vec_a_avx[i % vec_size] ^ vec_b_avx[i % vec_size];
-      benchmark::DoNotOptimize(cross_prod._ve.ve);
+      benchmark::DoNotOptimize(cross_prod[0]);
     }
   }
 }
@@ -378,4 +378,29 @@ static void BM_SumAVX2(benchmark::State &state) {
 BENCHMARK(BM_Sum)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 BENCHMARK(BM_SumAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 
+
+static void BM_EleProdSqLen(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      benchmark::DoNotOptimize(
+          misc::eleProductSqLen(vec_a[i % vec_size], vec_b[i % vec_size]));
+    }
+  }
+}
+
+static void BM_EleProdSqLenAVX2(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      benchmark::DoNotOptimize(
+          vec_a_avx[i % vec_size].eleProductSqLen(vec_b_avx[i % vec_size]));
+    }
+  }
+}
+
+BENCHMARK(BM_EleProdSqLen)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+BENCHMARK(BM_EleProdSqLenAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 BENCHMARK_MAIN();

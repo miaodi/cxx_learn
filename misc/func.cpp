@@ -63,11 +63,11 @@ void tmcRandAVX2::init_seed(std::uint32_t seed) {
 
 // AVX2 version: processes 8 uint32_t at a time
 __m256i twiddle_avx2(const __m256i u, const __m256i v) {
-  const __m256i UPPER_MASK_VEC = _mm256_set1_epi32(0x80000000U);
-  const __m256i LOWER_MASK_VEC = _mm256_set1_epi32(0x7fffffffU);
-  const __m256i MATRIX_A_VEC = _mm256_set1_epi32(0x9908b0dfU);
-  const __m256i ONE_VEC = _mm256_set1_epi32(1);
-  const __m256i ZERO_VEC = _mm256_setzero_si256();
+  static const __m256i UPPER_MASK_VEC = _mm256_set1_epi32(0x80000000U);
+  static const __m256i LOWER_MASK_VEC = _mm256_set1_epi32(0x7fffffffU);
+  static const __m256i MATRIX_A_VEC = _mm256_set1_epi32(0x9908b0dfU);
+  static const __m256i ONE_VEC = _mm256_set1_epi32(1);
+  static const __m256i ZERO_VEC = _mm256_setzero_si256();
 
   __m256i u_upper = _mm256_and_si256(u, UPPER_MASK_VEC);
   __m256i v_lower = _mm256_and_si256(v, LOWER_MASK_VEC);

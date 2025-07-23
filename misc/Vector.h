@@ -113,6 +113,14 @@ inline double crossProductLen(const MCVector &a, const MCVector &b) {
   return cross.length();
 }
 
+inline double eleProductSqLen(const MCVector &a, const MCVector &b) {
+  const double x = a[0] * b[0];
+  const double y = a[1] * b[1];
+  const double z = a[2] * b[2];
+
+  return x * x + y * y + z * z;
+}
+
 inline MCVector
 operator*(double a, const MCVector &b) { // Implemented in terms of *=.  See
                                          // Meyers, More Effective C++, Item 22.
@@ -190,6 +198,11 @@ inline bool MCVector::operator<(const MCVector &a) const {
 
 #ifdef __AVX2__
 class MCVectorAVX2 {
+  union DATA {
+    __m256d ve;
+    double data[4];
+  };
+
 public:
   // constructors
   MCVectorAVX2() { _ve.ve = _mm256_setzero_pd(); }
@@ -304,6 +317,15 @@ public:
     return std::sqrt(_tmp[0] + _tmp[1] + _tmp[2]);
   }
 
+  double eleProductSqLen(const MCVectorAVX2 &other) const {
+    __m256d tmp = _mm256_mul_pd(_ve.ve, other._ve.ve);
+
+    __m256d tmp2 = _mm256_mul_pd(tmp, tmp);
+
+    _mm256_store_pd(_tmp, tmp2);
+    return _tmp[0] + _tmp[1] + _tmp[2];
+  }
+
   void set(double const *a) { _ve.ve = _mm256_loadu_pd(a); }
 
   void Set(const double a, const double b, const double c) {
@@ -320,10 +342,7 @@ public:
   void setz(double val) { _ve.data[2] = val; }
 
   // private:
-  union DATA {
-    __m256d ve;
-    double data[4];
-  } _ve;
+  DATA _ve;
 
   alignas(32) mutable double _tmp[4];
 };
