@@ -1,7 +1,9 @@
+#include "Vector.h"
 #include "func.h"
 #include <benchmark/benchmark.h>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <vector>
 
 static void BM_TwiddleOrigin(benchmark::State &state) {
@@ -162,5 +164,218 @@ static void BM_CastDynamic(benchmark::State &state) {
 
 BENCHMARK(BM_CastStatic)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 BENCHMARK(BM_CastDynamic)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+
+const int vec_size = 100;
+std::vector<misc::MCVector> vec_a(vec_size);
+std::vector<misc::MCVectorAVX2> vec_a_avx(vec_size);
+std::vector<misc::MCVector> vec_b(vec_size);
+std::vector<misc::MCVectorAVX2> vec_b_avx(vec_size);
+std::once_flag vec_init_flag;
+void initialize_vectors() {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<double> dis(-1.0, 1.0);
+  std::generate(vec_a.begin(), vec_a.end(),
+                [&]() { return misc::MCVector(dis(gen), dis(gen), dis(gen)); });
+  for (size_t i = 0; i < vec_size; ++i) {
+    vec_a_avx[i] = vec_a[i];
+  }
+  std::generate(vec_b.begin(), vec_b.end(),
+                [&]() { return misc::MCVector(dis(gen), dis(gen), dis(gen)); });
+  for (size_t i = 0; i < vec_size; ++i) {
+    vec_b_avx[i] = vec_b[i];
+  }
+}
+
+static void BM_ConstructVec(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      misc::MCVector v(vec_a[i % vec_size]);
+      benchmark::DoNotOptimize(v[0]);
+    }
+  }
+}
+
+static void BM_ConstructVecAVX2(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      misc::MCVectorAVX2 v(vec_a_avx[i % vec_size]);
+      benchmark::DoNotOptimize(v[0]);
+    }
+  }
+}
+
+BENCHMARK(BM_ConstructVec)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+BENCHMARK(BM_ConstructVecAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+
+static void BM_Neg(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  misc::MCVector neg;
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      neg = -vec_a[i % vec_size];
+      benchmark::DoNotOptimize(neg[0]);
+    }
+  }
+}
+
+static void BM_NegAVX2(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  misc::MCVectorAVX2 neg;
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      neg = -vec_a_avx[i % vec_size];
+      benchmark::DoNotOptimize(neg[0]);
+    }
+  }
+}
+
+static void BM_NegAVX2Candidate(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  misc::MCVectorAVX2 neg;
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      neg = vec_a_avx[i % vec_size].neg();
+      benchmark::DoNotOptimize(neg[0]);
+    }
+  }
+}
+
+BENCHMARK(BM_Neg)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+BENCHMARK(BM_NegAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+BENCHMARK(BM_NegAVX2Candidate)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+
+static void BM_Length(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      benchmark::DoNotOptimize(vec_a[i % vec_size].length());
+    }
+  }
+}
+
+static void BM_LengthAVX2(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      benchmark::DoNotOptimize(vec_a_avx[i % vec_size].length());
+    }
+  }
+}
+
+BENCHMARK(BM_Length)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+BENCHMARK(BM_LengthAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+
+static void BM_DotProd(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      benchmark::DoNotOptimize(
+          misc::dotProduct(vec_a[i % vec_size], vec_b[i % vec_size]));
+    }
+  }
+}
+
+static void BM_DotProdAVX2(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      benchmark::DoNotOptimize(
+          misc::dotProduct(vec_a_avx[i % vec_size], vec_b_avx[i % vec_size]));
+    }
+  }
+}
+
+BENCHMARK(BM_DotProd)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+BENCHMARK(BM_DotProdAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+
+static void BM_CrossProd(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  misc::MCVector cross_prod;
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      cross_prod = vec_a[i % vec_size] ^ vec_b[i % vec_size];
+      benchmark::DoNotOptimize(cross_prod.ve);
+    }
+  }
+}
+
+static void BM_CrossProdAVX2(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  misc::MCVectorAVX2 cross_prod;
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      cross_prod = vec_a_avx[i % vec_size] ^ vec_b_avx[i % vec_size];
+      benchmark::DoNotOptimize(cross_prod._ve.ve);
+    }
+  }
+}
+
+BENCHMARK(BM_CrossProd)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+BENCHMARK(BM_CrossProdAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+
+static void BM_CrossProdLen(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      benchmark::DoNotOptimize(
+          misc::crossProductLen(vec_a[i % vec_size], vec_b[i % vec_size]));
+    }
+  }
+}
+
+static void BM_CrossProdLenAVX2(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      benchmark::DoNotOptimize(
+          vec_a_avx[i % vec_size].crossProductLen(vec_b_avx[i % vec_size]));
+    }
+  }
+}
+
+BENCHMARK(BM_CrossProdLen)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+BENCHMARK(BM_CrossProdLenAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+
+static void BM_Sum(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      misc::MCVector sum = vec_a[i % vec_size] + vec_b[i % vec_size];
+
+      benchmark::DoNotOptimize(sum[0]);
+    }
+  }
+}
+
+static void BM_SumAVX2(benchmark::State &state) {
+  std::call_once(vec_init_flag, initialize_vectors);
+  size_t size = state.range(0);
+  for (auto _ : state) {
+    for (size_t i = 0; i < size; ++i) {
+      auto sum = vec_a_avx[i % vec_size] + vec_b_avx[i % vec_size];
+      benchmark::DoNotOptimize(sum[0]);
+    }
+  }
+}
+
+BENCHMARK(BM_Sum)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+BENCHMARK(BM_SumAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 
 BENCHMARK_MAIN();

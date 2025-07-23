@@ -12,7 +12,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -mfma -mavx2")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -S -fverbose-asm")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx2")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -S -fverbose-asm")
 # include(CheckCXXCompilerFlag)
 # check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
 
