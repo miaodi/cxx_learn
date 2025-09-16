@@ -67,6 +67,12 @@ protected:
     TiledMatMatMulInternalTiledPadded<T>(A.data(), B.data(),
                                          C_internal_tiled.data(), M, N, K);
     EXPECT_TRUE(all_close(C_ref, C_internal_tiled));
+
+    // TiledMatMatMulInternalTransTiledPadded
+    std::vector<T> C_internal_trans_tiled(M * N, 0);
+    TiledMatMatMulInternalTransTiledPadded<T>(
+        A.data(), B.data(), C_internal_trans_tiled.data(), M, N, K);
+    EXPECT_TRUE(all_close(C_ref, C_internal_trans_tiled));
   }
 };
 

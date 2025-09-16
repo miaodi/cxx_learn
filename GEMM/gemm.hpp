@@ -167,9 +167,9 @@ void ConvertFromTiledRowMajorPadded(const T *inputTiled, T *output, int M,
 }
 
 template <typename T, int TileSize = 16>
-inline void Kernel_TileTile(const T *__restrict__ Atile,
-                            const T *__restrict__ BTtile,
-                            T *__restrict__ Ctile) {
+inline void Kernel_TileTileTrans(const T *__restrict__ Atile,
+                                 const T *__restrict__ BTtile,
+                                 T *__restrict__ Ctile) {
   for (int i = 0; i < TileSize; ++i) {
     for (int j = 0; j < TileSize; ++j) {
       T sum = 0;
@@ -209,15 +209,15 @@ void GemmTiledATiledBTToTiledC(const T *__restrict__ Atiles,
       for (int tk = 0; tk < nTK; ++tk) {
         const T *Atile = A_tile_ptr(ti, tk);
         const T *BTtile = BT_tile_ptr(tj, tk);
-        Kernel_TileTile<T, TileSize>(Atile, BTtile, Ctile);
+        Kernel_TileTileTrans<T, TileSize>(Atile, BTtile, Ctile);
       }
     }
   }
 }
 
 template <typename T, int TileSize = 4>
-void TiledMatMatMulInternalTiledPadded(const T *A, const T *B, T *C, int M,
-                                       int N, int K) {
+void TiledMatMatMulInternalTransTiledPadded(const T *A, const T *B, T *C, int M,
+                                            int N, int K) {
   const int numTilesM = (M + TileSize - 1) / TileSize;
   const int numTilesN = (N + TileSize - 1) / TileSize;
   const int numTilesK = (K + TileSize - 1) / TileSize;
@@ -234,6 +234,155 @@ void TiledMatMatMulInternalTiledPadded(const T *A, const T *B, T *C, int M,
 
   GemmTiledATiledBTToTiledC<T, TileSize>(A_tiled.data(), B_tiled.data(),
                                          C_tiled.data(), M, N, K);
+  // Convert C back to normal layout
+  ConvertFromTiledRowMajorPadded<T, TileSize>(C_tiled.data(), C, M, N);
+}
+
+#if defined(AVX2_SUPPORTED) && defined(FMA_SUPPORTED)
+
+template <typename T, int TileSize = 16>
+inline void Kernel_TileTile(const T *__restrict__ Atile,
+                            const T *__restrict__ BTtile,
+                            T *__restrict__ Ctile) {
+  for (int i = 0; i < TileSize; ++i) {
+    for (int k = 0; k < TileSize; ++k) {
+      const auto aik = Atile[i * TileSize + k];
+      if constexpr (std::is_same_v<T, float>) {
+        static_assert(TileSize % 8 == 0,
+                      "TileSize must be a multiple of 8 for AVX2");
+        for (int j = 0; j < TileSize; j += 8) {
+          __m256 c_vec = _mm256_loadu_ps(&Ctile[i * TileSize + j]);
+          __m256 b_vec = _mm256_loadu_ps(&BTtile[k * TileSize + j]);
+          __m256 a_vec = _mm256_set1_ps(aik);
+          c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
+          _mm256_storeu_ps(&Ctile[i * TileSize + j], c_vec);
+        }
+      } else if constexpr (std::is_same_v<T, double>) {
+        static_assert(TileSize % 4 == 0,
+                      "TileSize must be a multiple of 4 for AVX2");
+        for (int j = 0; j < TileSize; j += 4) {
+          __m256d c_vec = _mm256_loadu_pd(&Ctile[i * TileSize + j]);
+          __m256d b_vec = _mm256_loadu_pd(&BTtile[k * TileSize + j]);
+          __m256d a_vec = _mm256_set1_pd(aik);
+          c_vec = _mm256_fmadd_pd(a_vec, b_vec, c_vec);
+          _mm256_storeu_pd(&Ctile[i * TileSize + j], c_vec);
+        }
+      } else {
+        for (int j = 0; j < TileSize; ++j) {
+          Ctile[i * TileSize + j] += aik * BTtile[k * TileSize + j];
+        }
+      }
+    }
+  }
+}
+
+#elif defined(AVX512_SUPPORTED) && defined(FMA_SUPPORTED)
+
+template <typename T, int TileSize = 16>
+inline void Kernel_TileTile(const T *__restrict__ Atile,
+                            const T *__restrict__ BTtile,
+                            T *__restrict__ Ctile) {
+  for (int i = 0; i < TileSize; ++i) {
+    for (int k = 0; k < TileSize; ++k) {
+      const auto aik = Atile[i * TileSize + k];
+      if constexpr (std::is_same_v<T, float>) {
+        static_assert(TileSize % 16 == 0,
+                      "TileSize must be a multiple of 16 for AVX512");
+        for (int j = 0; j < TileSize; j += 16) {
+          __m512 c_vec = _mm512_loadu_ps(&Ctile[i * TileSize + j]);
+          __m512 b_vec = _mm512_loadu_ps(&BTtile[k * TileSize + j]);
+          __m512 a_vec = _mm512_set1_ps(aik);
+          c_vec = _mm512_fmadd_ps(a_vec, b_vec, c_vec);
+          _mm512_storeu_ps(&Ctile[i * TileSize + j], c_vec);
+        }
+      } else if constexpr (std::is_same_v<T, double>) {
+        static_assert(TileSize % 8 == 0,
+                      "TileSize must be a multiple of 8 for AVX512");
+        for (int j = 0; j < TileSize; j += 8) {
+          __m512d c_vec = _mm512_loadu_pd(&Ctile[i * TileSize + j]);
+          __m512d b_vec = _mm512_loadu_pd(&BTtile[k * TileSize + j]);
+          __m512d a_vec = _mm512_set1_pd(aik);
+          c_vec = _mm512_fmadd_pd(a_vec, b_vec, c_vec);
+          _mm512_storeu_pd(&Ctile[i * TileSize + j], c_vec);
+        }
+      } else {
+        for (int j = 0; j < TileSize; ++j) {
+          Ctile[i * TileSize + j] += aik * BTtile[k * TileSize + j];
+        }
+      }
+    }
+  }
+}
+#else
+template <typename T, int TileSize = 16>
+inline void Kernel_TileTile(const T *__restrict__ Atile,
+                            const T *__restrict__ BTtile,
+                            T *__restrict__ Ctile) {
+  for (int i = 0; i < TileSize; ++i) {
+    for (int k = 0; k < TileSize; ++k) {
+      const auto aik = Atile[i * TileSize + k];
+      for (int j = 0; j < TileSize; ++j) {
+        Ctile[i * TileSize + j] += aik * BTtile[k * TileSize + j];
+      }
+    }
+  }
+}
+
+#endif
+
+template <typename T, int TileSize = 16>
+void GemmTiledATiledBToTiledC(const T *__restrict__ Atiles,
+                              const T *__restrict__ BTiles,
+                              T *__restrict__ Ctiles, int M, int N, int K) {
+  const int ts = TileSize;
+  const int nTM = (M + ts - 1) / ts; // tiles along M
+  const int nTN = (N + ts - 1) / ts; // tiles along N
+  const int nTK = (K + ts - 1) / ts; // tiles along K
+  const std::size_t perTile = std::size_t(ts) * ts;
+
+  auto A_tile_ptr = [&](int ti, int tk) {
+    return Atiles + (std::size_t(ti) * nTK + tk) * perTile;
+  };
+  auto B_tile_ptr = [&](int tk, int tj) {
+    // B is K×N tiled → tk over K, tj over N
+    return BTiles + (std::size_t(tk) * nTN + tj) * perTile;
+  };
+  auto C_tile_ptr = [&](int ti, int tj) {
+    return Ctiles + (std::size_t(ti) * nTN + tj) * perTile;
+  };
+
+  for (int ti = 0; ti < nTM; ++ti) {
+    for (int tj = 0; tj < nTN; ++tj) {
+      T *Ctile = C_tile_ptr(ti, tj);
+      std::fill(Ctile, Ctile + perTile, T{0});
+      for (int tk = 0; tk < nTK; ++tk) {
+        const T *Atile = A_tile_ptr(ti, tk);
+        const T *BTtile = B_tile_ptr(tk, tj);
+        Kernel_TileTile<T, TileSize>(Atile, BTtile, Ctile);
+      }
+    }
+  }
+}
+
+template <typename T, int TileSize = 8>
+void TiledMatMatMulInternalTiledPadded(const T *A, const T *B, T *C, int M,
+                                       int N, int K) {
+  const int numTilesM = (M + TileSize - 1) / TileSize;
+  const int numTilesN = (N + TileSize - 1) / TileSize;
+  const int numTilesK = (K + TileSize - 1) / TileSize;
+  constexpr int tileSize = TileSize * TileSize;
+  std::vector<T> A_tiled(numTilesM * numTilesK * tileSize);
+  std::vector<T> B_tiled(numTilesN * numTilesK * tileSize);
+  std::vector<T> C_tiled(numTilesM * numTilesN * tileSize);
+
+  // Convert A to tiled layout
+  ConvertToTiledRowMajorPadded<T, TileSize>(A, A_tiled.data(), M, K);
+  // Convert B to tiled layout
+  ConvertToTiledRowMajorPadded<T, TileSize>(B, B_tiled.data(), K, N);
+  // Perform tiled multiplication
+
+  GemmTiledATiledBToTiledC<T, TileSize>(A_tiled.data(), B_tiled.data(),
+                                        C_tiled.data(), M, N, K);
   // Convert C back to normal layout
   ConvertFromTiledRowMajorPadded<T, TileSize>(C_tiled.data(), C, M, N);
 }

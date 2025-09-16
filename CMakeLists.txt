@@ -16,6 +16,36 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -S -fverbose-asm")
 
 include(CheckCXXCompilerFlag)
+
+check_cxx_compiler_flag("-mfma" COMPILER_SUPPORTS_FMA)
+if(COMPILER_SUPPORTS_FMA)
+  include(CheckCXXSourceRuns)
+  set(CMAKE_REQUIRED_FLAGS "-mfma")
+  check_cxx_source_runs("
+#include <immintrin.h>
+int main() {
+  __m128d a = _mm_set1_pd(1.0);
+  __m128d b = _mm_set1_pd(2.0);
+  __m128d c = _mm_fmadd_pd(a, b, a);
+  (void)c;
+  return 0;
+}
+" FMA_CPU_SUPPORTS)
+  set(CMAKE_REQUIRED_FLAGS "")
+if(FMA_CPU_SUPPORTS)
+  # Compiler supports FMA
+  message(STATUS "FMA is supported by both compiler and CPU")
+  add_definitions(-DFMA_SUPPORTED)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfma")
+else()
+  # Compiler supports FMA but CPU does not
+  message(STATUS "FMA is supported by compiler but not by CPU")
+endif()
+else()
+  # Compiler does not support FMA
+  message(STATUS "FMA is not supported by compiler")
+endif()
+
 check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
 if(COMPILER_SUPPORTS_AVX2)
   include(CheckCXXSourceRuns)
@@ -70,6 +100,8 @@ if(COMPILER_SUPPORTS_AVX512F)
 else()
   message(STATUS "AVX512 is not supported by compiler")
 endif()
+
+message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 
 include(FetchContent)
 
