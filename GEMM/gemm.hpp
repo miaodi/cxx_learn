@@ -238,7 +238,45 @@ void TiledMatMatMulInternalTransTiledPadded(const T *A, const T *B, T *C, int M,
   ConvertFromTiledRowMajorPadded<T, TileSize>(C_tiled.data(), C, M, N);
 }
 
-#if defined(AVX2_SUPPORTED) && defined(FMA_SUPPORTED)
+#if defined(AVX512_SUPPORTED) && defined(FMA_SUPPORTED)
+
+template <typename T, int TileSize = 16>
+inline void Kernel_TileTile(const T *__restrict__ Atile,
+                            const T *__restrict__ BTtile,
+                            T *__restrict__ Ctile) {
+  for (int i = 0; i < TileSize; ++i) {
+    for (int k = 0; k < TileSize; ++k) {
+      const auto aik = Atile[i * TileSize + k];
+      if constexpr (std::is_same_v<T, float>) {
+        static_assert(TileSize % 16 == 0,
+                      "TileSize must be a multiple of 16 for AVX512");
+        for (int j = 0; j < TileSize; j += 16) {
+          __m512 c_vec = _mm512_loadu_ps(&Ctile[i * TileSize + j]);
+          __m512 b_vec = _mm512_loadu_ps(&BTtile[k * TileSize + j]);
+          __m512 a_vec = _mm512_set1_ps(aik);
+          c_vec = _mm512_fmadd_ps(a_vec, b_vec, c_vec);
+          _mm512_storeu_ps(&Ctile[i * TileSize + j], c_vec);
+        }
+      } else if constexpr (std::is_same_v<T, double>) {
+        static_assert(TileSize % 8 == 0,
+                      "TileSize must be a multiple of 8 for AVX512");
+        for (int j = 0; j < TileSize; j += 8) {
+          __m512d c_vec = _mm512_loadu_pd(&Ctile[i * TileSize + j]);
+          __m512d b_vec = _mm512_loadu_pd(&BTtile[k * TileSize + j]);
+          __m512d a_vec = _mm512_set1_pd(aik);
+          c_vec = _mm512_fmadd_pd(a_vec, b_vec, c_vec);
+          _mm512_storeu_pd(&Ctile[i * TileSize + j], c_vec);
+        }
+      } else {
+        for (int j = 0; j < TileSize; ++j) {
+          Ctile[i * TileSize + j] += aik * BTtile[k * TileSize + j];
+        }
+      }
+    }
+  }
+}
+
+#elif defined(AVX2_SUPPORTED) && defined(FMA_SUPPORTED)
 
 template <typename T, int TileSize = 16>
 inline void Kernel_TileTile(const T *__restrict__ Atile,
@@ -276,43 +314,6 @@ inline void Kernel_TileTile(const T *__restrict__ Atile,
   }
 }
 
-#elif defined(AVX512_SUPPORTED) && defined(FMA_SUPPORTED)
-
-template <typename T, int TileSize = 16>
-inline void Kernel_TileTile(const T *__restrict__ Atile,
-                            const T *__restrict__ BTtile,
-                            T *__restrict__ Ctile) {
-  for (int i = 0; i < TileSize; ++i) {
-    for (int k = 0; k < TileSize; ++k) {
-      const auto aik = Atile[i * TileSize + k];
-      if constexpr (std::is_same_v<T, float>) {
-        static_assert(TileSize % 16 == 0,
-                      "TileSize must be a multiple of 16 for AVX512");
-        for (int j = 0; j < TileSize; j += 16) {
-          __m512 c_vec = _mm512_loadu_ps(&Ctile[i * TileSize + j]);
-          __m512 b_vec = _mm512_loadu_ps(&BTtile[k * TileSize + j]);
-          __m512 a_vec = _mm512_set1_ps(aik);
-          c_vec = _mm512_fmadd_ps(a_vec, b_vec, c_vec);
-          _mm512_storeu_ps(&Ctile[i * TileSize + j], c_vec);
-        }
-      } else if constexpr (std::is_same_v<T, double>) {
-        static_assert(TileSize % 8 == 0,
-                      "TileSize must be a multiple of 8 for AVX512");
-        for (int j = 0; j < TileSize; j += 8) {
-          __m512d c_vec = _mm512_loadu_pd(&Ctile[i * TileSize + j]);
-          __m512d b_vec = _mm512_loadu_pd(&BTtile[k * TileSize + j]);
-          __m512d a_vec = _mm512_set1_pd(aik);
-          c_vec = _mm512_fmadd_pd(a_vec, b_vec, c_vec);
-          _mm512_storeu_pd(&Ctile[i * TileSize + j], c_vec);
-        }
-      } else {
-        for (int j = 0; j < TileSize; ++j) {
-          Ctile[i * TileSize + j] += aik * BTtile[k * TileSize + j];
-        }
-      }
-    }
-  }
-}
 #else
 template <typename T, int TileSize = 16>
 inline void Kernel_TileTile(const T *__restrict__ Atile,
@@ -364,7 +365,7 @@ void GemmTiledATiledBToTiledC(const T *__restrict__ Atiles,
   }
 }
 
-template <typename T, int TileSize = 8>
+template <typename T, int TileSize = 16>
 void TiledMatMatMulInternalTiledPadded(const T *A, const T *B, T *C, int M,
                                        int N, int K) {
   const int numTilesM = (M + TileSize - 1) / TileSize;
