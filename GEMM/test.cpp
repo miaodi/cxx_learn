@@ -1,5 +1,7 @@
 
+#include "dgemm_nn.h"
 #include "gemm.hpp"
+#include "ulmBLASgemm.hpp"
 #include <cmath>
 #include <gtest/gtest.h>
 #include <random>
@@ -73,6 +75,18 @@ protected:
     TiledMatMatMulInternalTransTiledPadded<T>(
         A.data(), B.data(), C_internal_trans_tiled.data(), M, N, K);
     EXPECT_TRUE(all_close(C_ref, C_internal_trans_tiled));
+
+    // ulmBLAS gemm
+    std::vector<T> C_ulmblas(M * N, 0);
+    gemm::gemm_pure_c<T> ulmblas;
+    ulmblas(A.data(), B.data(), C_ulmblas.data(), M, N, K);
+    EXPECT_TRUE(all_close(C_ref, C_ulmblas));
+
+    // dgemm_nn
+    std::vector<T> C_dgemm(M * N, 0);
+    gemm::gemm_nn<T>(M, N, K, 1.0f, A.data(), K, 1, B.data(), N, 1, 0.0f,
+                     C_dgemm.data(), N, 1);
+    EXPECT_TRUE(all_close(C_ref, C_dgemm));
   }
 };
 

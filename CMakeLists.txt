@@ -49,15 +49,15 @@ endif()
 check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
 if(COMPILER_SUPPORTS_AVX2)
   include(CheckCXXSourceRuns)
-  set(CMAKE_REQUIRED_FLAGS "-mavx2")
-  check_cxx_source_runs("
-#include <immintrin.h>
-int main() {
-  __m256 a = _mm256_set1_ps(1.0f);
-  (void)a;
-  return 0;
-}
-" AVX2_CPU_SUPPORTS)
+  # set(CMAKE_REQUIRED_FLAGS "-mavx2")
+#   check_cxx_source_runs("
+# #include <immintrin.h>
+# int main() {
+#   __m256 a = _mm256_set1_ps(1.0f);
+#   (void)a;
+#   return 0;
+# }
+# " AVX2_CPU_SUPPORTS)
   set(CMAKE_REQUIRED_FLAGS "")
 if(AVX2_CPU_SUPPORTS)
   # Compiler supports AVX2

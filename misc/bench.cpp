@@ -44,7 +44,9 @@ static void BM_tmcRand(benchmark::State &state) {
     }
   }
 }
+BENCHMARK(BM_tmcRand)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 
+#ifdef __AVX2__
 static void BM_tmcRandAVX2(benchmark::State &state) {
   std::uint32_t seed = 123456789;
   MCRand::tmcRandAVX2 gen(seed);
@@ -54,9 +56,8 @@ static void BM_tmcRandAVX2(benchmark::State &state) {
     }
   }
 }
-
-BENCHMARK(BM_tmcRand)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 BENCHMARK(BM_tmcRandAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+#endif
 
 // test dynamic cast vs static cast
 
@@ -164,11 +165,11 @@ static void BM_CastDynamic(benchmark::State &state) {
 
 BENCHMARK(BM_CastStatic)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 BENCHMARK(BM_CastDynamic)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
-
+#ifdef __AVX2__
 const int vec_size = 100;
 std::vector<misc::MCVector> vec_a(vec_size);
-std::vector<misc::MCVectorAVX2> vec_a_avx(vec_size);
 std::vector<misc::MCVector> vec_b(vec_size);
+std::vector<misc::MCVectorAVX2> vec_a_avx(vec_size);
 std::vector<misc::MCVectorAVX2> vec_b_avx(vec_size);
 std::once_flag vec_init_flag;
 void initialize_vectors() {
@@ -311,6 +312,7 @@ static void BM_CrossProd(benchmark::State &state) {
     }
   }
 }
+BENCHMARK(BM_CrossProd)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 
 static void BM_CrossProdAVX2(benchmark::State &state) {
   std::call_once(vec_init_flag, initialize_vectors);
@@ -324,7 +326,6 @@ static void BM_CrossProdAVX2(benchmark::State &state) {
   }
 }
 
-BENCHMARK(BM_CrossProd)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 BENCHMARK(BM_CrossProdAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 
 static void BM_CrossProdLen(benchmark::State &state) {
@@ -363,6 +364,7 @@ static void BM_Sum(benchmark::State &state) {
     }
   }
 }
+BENCHMARK(BM_Sum)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 
 static void BM_SumAVX2(benchmark::State &state) {
   std::call_once(vec_init_flag, initialize_vectors);
@@ -374,10 +376,7 @@ static void BM_SumAVX2(benchmark::State &state) {
     }
   }
 }
-
-BENCHMARK(BM_Sum)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 BENCHMARK(BM_SumAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
-
 
 static void BM_EleProdSqLen(benchmark::State &state) {
   std::call_once(vec_init_flag, initialize_vectors);
@@ -389,6 +388,7 @@ static void BM_EleProdSqLen(benchmark::State &state) {
     }
   }
 }
+BENCHMARK(BM_EleProdSqLen)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 
 static void BM_EleProdSqLenAVX2(benchmark::State &state) {
   std::call_once(vec_init_flag, initialize_vectors);
@@ -401,6 +401,6 @@ static void BM_EleProdSqLenAVX2(benchmark::State &state) {
   }
 }
 
-BENCHMARK(BM_EleProdSqLen)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
 BENCHMARK(BM_EleProdSqLenAVX2)->RangeMultiplier(16)->Range(1 << 0, 1 << 20);
+#endif
 BENCHMARK_MAIN();
