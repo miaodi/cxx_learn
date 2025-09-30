@@ -1,7 +1,7 @@
 #pragma once
 #include <algorithm>
+#include <array>
 #include <immintrin.h>
-#include <vector>
 namespace gemm {
 
 // assume row-major storage
@@ -79,7 +79,13 @@ protected:
         // compute micro kernel
         const T *A_panel = &_A[(i / _MR) * KC * _MR];
         const T *B_panel = &_B[(j / _NR) * KC * _NR];
-        Kernel_Micro(_MR, _NR, KC, N, A_panel, B_panel, &C[i * N + j]);
+        Kernel_Micro(_MR, _NR, KC, N, A_panel, B_panel, _AB.data());
+
+        for (int i = 0; i < MR; ++i) {
+          for (int j = 0; j < NR; ++j) {
+            C[i * N + j] += _AB[i * _NR + j];
+          }
+        }
       }
     }
   }
@@ -147,7 +153,7 @@ protected:
       for (int i = 0; i < MR; ++i) {
         const auto aik = A[k * _MR + i];
         for (int j = 0; j < NR; ++j) {
-          C[i * N + j] += aik * B[k * _NR + j];
+          _AB[i * _NR + j] += aik * B[k * _NR + j];
         }
       }
       // #endif
@@ -162,6 +168,6 @@ protected:
   static constexpr int _NR{4};    // micro-panel size along N
   std::array<T, _MC * _KC> _A;
   std::array<T, _KC * _NC> _B;
-  std::array<T, _MR * _NR> _C;
+  std::array<T, _MR * _NR> _AB;
 };
 } // namespace gemm
