@@ -1,6 +1,6 @@
 ./GEMM_bench --benchmark_filter=BM_ulmBLASgemm/1024 --benchmark_dry_run=1
 
-perf stat -e cycles,instructions,branches,branch-misses,L1-dcache-loads,L1-dcache-load-misses,L1-dcache-stores,L1-dcache-store-misses,LLC-loads,LLC-load-misses ./GEMM_bench --benchmark_filter=BM_ulmBLASgemm/1024 --benchmark_dry_run=1
+perf stat -e cycles,instructions,branches,branch-misses,L1-dcache-loads,L1-dcache-load-misses,L1-dcache-stores,L1-dcache-store-misses,LLC-loads,LLC-load-misses,dTLB-loads,dTLB-load-misses,dTLB-stores,dTLB-store-misses ./GEMM_bench --benchmark_filter=BM_ulmBLASgemm/1024 --benchmark_dry_run=1
 
 perf stat -e cycles,instructions,branches,branch-misses,L1-dcache-loads,L1-dcache-load-misses,L1-dcache-stores,L1-dcache-store-misses,LLC-loads,LLC-load-misses ./GEMM_bench --benchmark_filter=BM_TiledMatMatMulInternalTiledPadded/1024   --benchmark_dry_run=1
 

@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <array>
 #include <immintrin.h>
+#include <iostream>
+#include <vector>
 namespace gemm {
 
 // assume row-major storage
@@ -9,8 +11,8 @@ template <typename T> class gemm_pure_c {
 public:
   gemm_pure_c() {}
   void operator()(const T *A, const T *B, T *C, int M, int N, int K) {
-    // Initialize C matrix to zero
-    std::fill(C, C + M * N, T(0));
+    // // Initialize C matrix to zero
+    // std::fill(C, C + M * N, T(0));
 
     const int mb = (M + _MC - 1) / _MC;
     const int nb = (N + _NC - 1) / _NC;
@@ -72,102 +74,122 @@ protected:
   }
 
   void gemm_macro_kernel(int MC, int NC, int KC, T *C, int N) {
-    for (int j = 0; j < NC; j += _NR) {
-      int jb = std::min(_NR, NC - j);
-      for (int i = 0; i < MC; i += _MR) {
-        int ib = std::min(_MR, MC - i);
-        // compute micro kernel
-        const T *A_panel = &_A[(i / _MR) * KC * _MR];
-        const T *B_panel = &_B[(j / _NR) * KC * _NR];
-        Kernel_Micro(_MR, _NR, KC, N, A_panel, B_panel, _AB.data());
+    const int mp = (MC + _MR - 1) / _MR;
+    const int np = (NC + _NR - 1) / _NR;
+    const int _mr = MC % _MR;
+    const int _nr = NC % _NR;
 
-        for (int i = 0; i < MR; ++i) {
-          for (int j = 0; j < NR; ++j) {
-            C[i * N + j] += _AB[i * _NR + j];
-          }
-        }
+    for (int j = 0; j < np; ++j) {
+      int jb = (j == np - 1 && _nr != 0) ? _nr : _NR;
+      const T *B_panel = &_B[(j * KC * _NR)];
+      for (int i = 0; i < mp; ++i) {
+        int ib = (i == mp - 1 && _mr != 0) ? _mr : _MR;
+        // compute micro kernel
+        const T *A_panel = &_A[(i * KC * _MR)];
+        Kernel_Micro(_MR, _NR, KC, N, A_panel, B_panel, &C[i * _MR * N]);
       }
+      C += _NR;
     }
   }
 
   void Kernel_Micro(int MR, int NR, int KC, int N, const T *A, const T *B,
                     T *C) {
-    // std::fill(C, C + _MR * _NR, T(0));
+    T _C[_MR * _NR] = {0};
     for (int k = 0; k < KC; ++k) {
-      // #if defined(AVX512_SUPPORTED) && defined(FMA_SUPPORTED)
-      //       for (int i = 0; i < MR; ++i) {
-      //         const auto aik = A[k * _MR + i];
-      //         if constexpr (std::is_same_v<T, float>) {
-      //           static_assert(_NR % 16 == 0,
-      //                         "_NR must be a multiple of 16 for AVX512");
-      //           for (int j = 0; j < NR; j += 16) {
-      //             __m512 c_vec = _mm512_loadu_ps(&C[i * _NR + j]);
-      //             __m512 b_vec = _mm512_loadu_ps(&B[k * _NR + j]);
-      //             __m512 a_vec = _mm512_set1_ps(aik);
-      //             c_vec = _mm512_fmadd_ps(a_vec, b_vec, c_vec);
-      //             _mm512_storeu_ps(&C[i * _NR + j], c_vec);
-      //           }
-      //         } else if constexpr (std::is_same_v<T, double>) {
-      //           static_assert(_NR % 8 == 0, "_NR must be a multiple of 8 for
-      //           AVX512"); for (int j = 0; j < NR; j += 8) {
-      //             __m512d c_vec = _mm512_loadu_pd(&C[i * _NR + j]);
-      //             __m512d b_vec = _mm512_loadu_pd(&B[k * _NR + j]);
-      //             __m512d a_vec = _mm512_set1_pd(aik);
-      //             c_vec = _mm512_fmadd_pd(a_vec, b_vec, c_vec);
-      //             _mm512_storeu_pd(&C[i * _NR + j], c_vec);
-      //           }
-      //         } else {
-      //           for (int j = 0; j < NR; ++j) {
-      //             C[i * _NR + j] += aik * B[k * _NR + j];
-      //           }
-      //         }
-      //       }
-      // #elif defined(AVX2_SUPPORTED) && defined(FMA_SUPPORTED)
-      //       for (int i = 0; i < MR; ++i) {
-      //         const auto aik = A[k * _MR + i];
-      //         if constexpr (std::is_same_v<T, float>) {
-      //           static_assert(_NR % 8 == 0, "_NR must be a multiple of 8 for
-      //           AVX2"); for (int j = 0; j < NR; j += 8) {
-      //             __m256 c_vec = _mm256_loadu_ps(&C[i * _NR + j]);
-      //             __m256 b_vec = _mm256_loadu_ps(&B[k * _NR + j]);
-      //             __m256 a_vec = _mm256_set1_ps(aik);
-      //             c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
-      //             _mm256_storeu_ps(&C[i * _NR + j], c_vec);
-      //           }
-      //         } else if constexpr (std::is_same_v<T, double>) {
-      //           static_assert(_NR % 4 == 0, "_NR must be a multiple of 4 for
-      //           AVX2"); for (int j = 0; j < NR; j += 4) {
-      //             __m256d c_vec = _mm256_loadu_pd(&C[i * _NR + j]);
-      //             __m256d b_vec = _mm256_loadu_pd(&B[k * _NR + j]);
-      //             __m256d a_vec = _mm256_set1_pd(aik);
-      //             c_vec = _mm256_fmadd_pd(a_vec, b_vec, c_vec);
-      //             _mm256_storeu_pd(&C[i * _NR + j], c_vec);
-      //           }
-      //         } else {
-      //           for (int j = 0; j < NR; ++j) {
-      //             C[i * _NR + j] += aik * B[k * _NR + j];
-      //           }
-      //         }
-      //       }
-      // #else
+#if defined(AVX512_SUPPORTED) && defined(FMA_SUPPORTED)
+      // AVX512 vectorized version
       for (int i = 0; i < MR; ++i) {
-        const auto aik = A[k * _MR + i];
-        for (int j = 0; j < NR; ++j) {
-          _AB[i * _NR + j] += aik * B[k * _NR + j];
+        const auto aik = A[i];
+        auto c_row = &_C[i * NR];
+
+        if constexpr (std::is_same_v<T, float>) {
+          static_assert(_NR % 16 == 0,
+                        "_NR must be a multiple of 16 for AVX512");
+          for (int j = 0; j < NR; j += 16) {
+            __m512 c_vec = _mm512_loadu_ps(&c_row[j]);
+            __m512 b_vec = _mm512_loadu_ps(&B[j]);
+            __m512 a_vec = _mm512_set1_ps(aik);
+            c_vec = _mm512_fmadd_ps(a_vec, b_vec, c_vec);
+            _mm512_storeu_ps(&c_row[j], c_vec);
+          }
+        } else if constexpr (std::is_same_v<T, double>) {
+          static_assert(_NR % 8 == 0, "_NR must be a multiple of 8 for AVX512");
+          for (int j = 0; j < NR; j += 8) {
+            __m512d c_vec = _mm512_loadu_pd(&c_row[j]);
+            __m512d b_vec = _mm512_loadu_pd(&B[j]);
+            __m512d a_vec = _mm512_set1_pd(aik);
+            c_vec = _mm512_fmadd_pd(a_vec, b_vec, c_vec);
+            _mm512_storeu_pd(&c_row[j], c_vec);
+          }
+        } else {
+          // Fallback for other types
+          for (int j = 0; j < NR; ++j) {
+            c_row[j] += aik * B[j];
+          }
         }
       }
-      // #endif
+#elif defined(AVX2_SUPPORTED) && defined(FMA_SUPPORTED)
+      // AVX2 vectorized version
+      for (int i = 0; i < MR; ++i) {
+        const auto aik = A[i];
+        auto c_row = &_C[i * NR];
+
+        if constexpr (std::is_same_v<T, float>) {
+          static_assert(_NR % 8 == 0, "_NR must be a multiple of 8 for AVX2");
+          for (int j = 0; j < NR; j += 8) {
+            __m256 c_vec = _mm256_loadu_ps(&c_row[j]);
+            __m256 b_vec = _mm256_loadu_ps(&B[j]);
+            __m256 a_vec = _mm256_set1_ps(aik);
+            c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
+            _mm256_storeu_ps(&c_row[j], c_vec);
+          }
+        } else if constexpr (std::is_same_v<T, double>) {
+          static_assert(_NR % 4 == 0, "_NR must be a multiple of 4 for AVX2");
+          for (int j = 0; j < NR; j += 4) {
+            __m256d c_vec = _mm256_loadu_pd(&c_row[j]);
+            __m256d b_vec = _mm256_loadu_pd(&B[j]);
+            __m256d a_vec = _mm256_set1_pd(aik);
+            c_vec = _mm256_fmadd_pd(a_vec, b_vec, c_vec);
+            _mm256_storeu_pd(&c_row[j], c_vec);
+          }
+        } else {
+          // Fallback for other types
+          for (int j = 0; j < NR; ++j) {
+            c_row[j] += aik * B[j];
+          }
+        }
+      }
+
+#else
+      // Scalar fallback version (your original code)
+      for (int i = 0; i < MR; ++i) {
+        const auto aik = A[i];
+        auto c_row = &_C[i * NR];
+        for (int j = 0; j < NR; ++j) {
+          c_row[j] += aik * B[j];
+        }
+      }
+#endif
+      A += MR;
+      B += NR;
+    }
+    for (int i = 0; i < MR; ++i) {
+      auto c_row = C + i * N;
+      auto c_buf_row = &_C[i * NR];
+      for (int j = 0; j < NR; ++j) {
+        c_row[j] += c_buf_row[j];
+      }
     }
   }
 
 protected:
-  static constexpr int _MC{384};  // block size along M
-  static constexpr int _KC{384};  // block size along K
-  static constexpr int _NC{4096}; // block size along N
-  static constexpr int _MR{4};    // micro-panel size along M
-  static constexpr int _NR{4};    // micro-panel size along N
-  std::array<T, _MC * _KC> _A;
-  std::array<T, _KC * _NC> _B;
-  std::array<T, _MR * _NR> _AB;
+  static constexpr int _MC{384};   // block size along M
+  static constexpr int _KC{384};   // block size along K
+  static constexpr int _NC{4096};  // block size along N
+  static constexpr int _MR{2 * 4}; // micro-panel size along M
+  static constexpr int _NR{2 * 4}; // micro-panel size along N
+  std::vector<T> _A = std::vector<T>(_MC * _KC);
+  std::vector<T> _B = std::vector<T>(_KC * _NC);
+  // T _C[_MR * _NR];
 };
 } // namespace gemm
