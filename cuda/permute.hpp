@@ -9,6 +9,7 @@
 #include <omp.h>
 #include <random>
 #include <vector>
+#include <algorithm>
 
 #define MAX_THREADS 1024
 

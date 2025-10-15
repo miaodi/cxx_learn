@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 
 project(CXX_LEARNING)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -124,7 +124,7 @@ option(USE_CUDA "Use cuda" OFF)
 
 if(USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
-  set(CMAKE_CUDA_STANDARD 17)
+  set(CMAKE_CUDA_STANDARD 20)
   set(CMAKE_CUDA_STANDARD_REQUIRED ON)
   set(CMAKE_CUDA_EXTENSIONS OFF)
   # find_package(cudss REQUIRED)

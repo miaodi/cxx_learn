@@ -23,4 +23,8 @@ if(USE_CUDA)
     add_executable(permutation_test ${TEST_SRC})
     # set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME ${ONE_BENCH_EXEC}) 
     target_link_libraries(permutation_test PRIVATE ${TEST_DEPENDENCIES})
+
+    add_executable(gpu_info gpu_info.cu)
+    target_link_libraries(gpu_info PRIVATE CUDA::cudart)
+    add_subdirectory(PMPP)
 endif(USE_CUDA)
