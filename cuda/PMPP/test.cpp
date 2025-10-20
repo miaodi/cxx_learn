@@ -242,6 +242,25 @@ TEST_F(GEMMTest, SmallMatrices) {
     verifyGEMMResults(C_expected, C_gpu);
 }
 
+// Test tiled GEMM (tile size 16 and 32) correctness against CPU reference
+TEST_F(GEMMTest, TiledGEMM_16_32) {
+  const int M = 64, N = 48, K = 32; // Non-square to exercise indexing
+  std::vector<float> A, B, C_ref, C_tiled(M * N);
+  generateRandomMatrix(A, M, K);
+  generateRandomMatrix(B, K, N);
+  cpu_gemm_reference(A, B, C_ref, M, N, K);
+
+  // Tile size 16
+  std::fill(C_tiled.begin(), C_tiled.end(), 0.0f);
+  gpu_gemm_tiled(A.data(), B.data(), C_tiled.data(), M, N, K, 16);
+  verifyGEMMResults(C_ref, C_tiled, 1e-3f);
+
+  // Tile size 32 (works even if dimensions not multiples due to guards)
+  std::fill(C_tiled.begin(), C_tiled.end(), 0.0f);
+  gpu_gemm_tiled(A.data(), B.data(), C_tiled.data(), M, N, K, 32);
+  verifyGEMMResults(C_ref, C_tiled, 1e-3f);
+}
+
 // Test square matrices
 TEST_F(GEMMTest, SquareMatrices) {
     const int N = 8;  // 8x8 matrices
@@ -371,6 +390,27 @@ TEST_F(GEMMTest, MediumMatrices) {
     gpu_gemm(A.data(), B.data(), C_gpu.data(), M, N, K);
     
     verifyGEMMResults(C_expected, C_gpu, 1e-3f);
+}
+
+// Thread boundary style test for tiled kernel across sizes and tile options
+TEST_F(GEMMTest, TiledGEMM_ThreadBoundaries) {
+  // Sizes around tile boundaries; include some not divisible by tile
+  struct Case { int M,N,K; int tile; }; 
+  std::vector<Case> cases = {
+    {15,15,15,16}, {16,16,16,16}, {17,17,17,16},
+    {31,31,31,32}, {32,32,32,32}, {33,33,33,32},
+    {63,48,32,16}, {64,64,48,16}, {65,64,48,16},
+    {63,63,63,32}, {64,64,64,32}, {65,65,65,32}
+  };
+  for(const auto &c : cases) {
+    std::vector<float> A,B,C_ref,C_tiled(c.M * c.N);
+    generateRandomMatrix(A, c.M, c.K);
+    generateRandomMatrix(B, c.K, c.N);
+    cpu_gemm_reference(A,B,C_ref,c.M,c.N,c.K);
+    std::fill(C_tiled.begin(), C_tiled.end(), 0.0f);
+    gpu_gemm_tiled(A.data(), B.data(), C_tiled.data(), c.M, c.N, c.K, c.tile);
+    verifyGEMMResults(C_ref, C_tiled, 1e-3f);
+  }
 }
 
 // Test with special floating-point values

@@ -201,9 +201,38 @@ BENCHMARK_DEFINE_F(GEMMBenchmark, GPU_Square)(benchmark::State& state) {
     state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * bytes_per_iteration);
 }
 
+// Benchmark tiled GPU GEMM for square matrices with TILE=16 and TILE=32
+BENCHMARK_DEFINE_F(GEMMBenchmark, GPU_Tiled16)(benchmark::State& state) {
+    for (auto _ : state) {
+        gpu_gemm_tiled(A.data(), B.data(), C.data(), M, N, K, 16);
+        benchmark::DoNotOptimize(C.data());
+    }
+    int64_t flops_per_iteration = static_cast<int64_t>(2) * M * N * K;
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * flops_per_iteration);
+}
+
+BENCHMARK_DEFINE_F(GEMMBenchmark, GPU_Tiled32)(benchmark::State& state) {
+    for (auto _ : state) {
+        gpu_gemm_tiled(A.data(), B.data(), C.data(), M, N, K, 32);
+        benchmark::DoNotOptimize(C.data());
+    }
+    int64_t flops_per_iteration = static_cast<int64_t>(2) * M * N * K;
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * flops_per_iteration);
+}
+
 // Register square matrix benchmarks
 BENCHMARK_REGISTER_F(GEMMBenchmark, GPU_Square)
     ->Range(16, 512)  // 16x16 to 512x512 matrices
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(GEMMBenchmark, GPU_Tiled16)
+    ->Range(16, 512)
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(GEMMBenchmark, GPU_Tiled32)
+    ->Range(16, 512)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
