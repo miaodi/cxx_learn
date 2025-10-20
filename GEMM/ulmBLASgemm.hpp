@@ -186,8 +186,13 @@ protected:
   static constexpr int _MC{384};   // block size along M
   static constexpr int _KC{384};   // block size along K
   static constexpr int _NC{4096};  // block size along N
-  static constexpr int _MR{2 * 4}; // micro-panel size along M
-  static constexpr int _NR{2 * 4}; // micro-panel size along N
+  #if defined(AVX512_SUPPORTED)
+    static constexpr int _MR{16}; // micro-panel size along M
+    static constexpr int _NR{16}; // micro-panel size along N
+  #else
+    static constexpr int _MR{8};  // micro-panel size along M
+    static constexpr int _NR{8};  // micro-panel size along N
+  #endif
   std::vector<T> _A = std::vector<T>(_MC * _KC);
   std::vector<T> _B = std::vector<T>(_KC * _NC);
   // T _C[_MR * _NR];
