@@ -228,13 +228,13 @@ protected:
         2.0 * static_cast<double>(M) * N * K; // 2*M*N*K
     const double bytes_per_iter =
         static_cast<double>(M * K + K * N + M * N) * sizeof(float);
-    state.SetItemsProcessed(
-        static_cast<int64_t>(state.iterations() * flops_per_iter));
+    // state.SetItemsProcessed(
+    //     static_cast<int64_t>(state.iterations() * flops_per_iter));
     state.SetBytesProcessed(
         static_cast<int64_t>(state.iterations() * bytes_per_iter));
-    // state.counters["GFLOPS"] =
-    //     benchmark::Counter((flops_per_iter * state.iterations()) / 1e9,
-    //                        benchmark::Counter::kIsRate);
+    state.counters["GFLOPS"] =
+        benchmark::Counter((flops_per_iter * state.iterations()) / 1e9,
+                           benchmark::Counter::kIsRate);
   }
 
   // cuBLAS helper for reference benchmarks
@@ -367,9 +367,55 @@ BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_Tiled32)
   SetMetrics(state);
 }
 
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_cuBLAS)
+(benchmark::State &state) {
+  for (auto _ : state) {
+    cublas_gemm(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x2)
+(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<32, 2>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x4)
+(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<32, 4>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x2)
+(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<64, 2>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x4)
+(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<64, 4>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
 // Register square matrix benchmarks in order of optimization complexity
 // 1. Reference implementation (cuBLAS - optimized baseline)
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_cuBLAS)
+    ->Name("GEMM_Square_cuBLAS")
     ->RangeMultiplier(2)
     ->Range(16, 16384)
     ->Unit(benchmark::kMillisecond)
@@ -377,6 +423,7 @@ BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_cuBLAS)
 
 // 2. Naive implementation (basic GPU parallelization)
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Square)
+    ->Name("GEMM_Square_Naive")
     ->RangeMultiplier(2)
     ->Range(16, 16384)
     ->Unit(benchmark::kMillisecond)
@@ -384,12 +431,14 @@ BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Square)
 
 // 3. Tiled implementations (shared memory optimization)
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Tiled16)
+    ->Name("GEMM_Square_Tiled16")
     ->RangeMultiplier(2)
     ->Range(16, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Tiled32)
+    ->Name("GEMM_Square_Tiled32")
     ->RangeMultiplier(2)
     ->Range(16, 16384)
     ->Unit(benchmark::kMillisecond)
@@ -397,31 +446,46 @@ BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Tiled32)
 
 // 4. Micro-tiled implementations (advanced thread-level optimization)
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_32x2)
+    ->Name("GEMM_Square_MicroTiled_32x2")
     ->RangeMultiplier(2)
     ->Range(32, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_32x4)
+    ->Name("GEMM_Square_MicroTiled_32x4")
     ->RangeMultiplier(2)
     ->Range(64, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_64x2)
+    ->Name("GEMM_Square_MicroTiled_64x2")
     ->RangeMultiplier(2)
     ->Range(64, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_64x4)
+    ->Name("GEMM_Square_MicroTiled_64x4")
     ->RangeMultiplier(2)
     ->Range(64, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 // Representative rectangular cases (tall, wide, deep)
+// cuBLAS reference for rectangular matrices
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_cuBLAS)
+    ->Name("GEMM_Rectangular_cuBLAS")
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+// Basic rectangular implementation
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular)
+    ->Name("GEMM_Rectangular_Naive")
     ->Args({512, 64, 128})
     ->Args({64, 512, 128})
     ->Args({128, 128, 512})
@@ -430,6 +494,7 @@ BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular)
 
 // Tiled versions for rectangular matrices
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_Tiled16)
+    ->Name("GEMM_Rectangular_Tiled16")
     ->Args({512, 64, 128})
     ->Args({64, 512, 128})
     ->Args({128, 128, 512})
@@ -437,6 +502,40 @@ BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_Tiled16)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_Tiled32)
+    ->Name("GEMM_Rectangular_Tiled32")
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+// Micro-tiled versions for rectangular matrices
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x2)
+    ->Name("GEMM_Rectangular_MicroTiled_32x2")
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x4)
+    ->Name("GEMM_Rectangular_MicroTiled_32x4")
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x2)
+    ->Name("GEMM_Rectangular_MicroTiled_64x2")
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x4)
+    ->Name("GEMM_Rectangular_MicroTiled_64x4")
     ->Args({512, 64, 128})
     ->Args({64, 512, 128})
     ->Args({128, 128, 512})

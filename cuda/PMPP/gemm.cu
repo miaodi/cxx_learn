@@ -2,6 +2,17 @@
 #include <cuda_runtime.h>
 #include <stdexcept>
 
+// Conditional unroll macro - can be defined at compile time
+#ifndef USE_PRAGMA_UNROLL
+#define USE_PRAGMA_UNROLL 0
+#endif
+
+#if USE_PRAGMA_UNROLL
+#define CONDITIONAL_UNROLL_START _Pragma("unroll")
+#else
+#define CONDITIONAL_UNROLL_START
+#endif
+
 __global__ void gemm_kernel(const float *A, const float *B, float *C, int M,
                             int N, int K)
 {
@@ -223,9 +234,9 @@ __global__ void gemm_micro_tiled_kernel(
 
     // Per-thread accumulators
     float acc[MICRO_TILE][MICRO_TILE];
-#pragma unroll
+    CONDITIONAL_UNROLL_START
     for (int i = 0; i < MICRO_TILE; i++)
-#pragma unroll
+        CONDITIONAL_UNROLL_START
         for (int j = 0; j < MICRO_TILE; j++)
             acc[i][j] = 0.0f;
 
@@ -238,13 +249,13 @@ __global__ void gemm_micro_tiled_kernel(
         int aColBase = t * TILE + tx * MICRO_TILE; // along K
         int bRowBase = t * TILE + ty * MICRO_TILE; // along K
 
-#pragma unroll
+        CONDITIONAL_UNROLL_START
         for (int i = 0; i < MICRO_TILE; ++i)
         {
             int rA = row0 + i;
             int rB = bRowBase + i;
 
-#pragma unroll
+            CONDITIONAL_UNROLL_START
             for (int j = 0; j < MICRO_TILE; ++j)
             {
                 int cA = aColBase + j;
@@ -262,23 +273,23 @@ __global__ void gemm_micro_tiled_kernel(
         __syncthreads();
 
 // Compute using this K-tile
-#pragma unroll
+        CONDITIONAL_UNROLL_START
         for (int kk = 0; kk < TILE; ++kk)
         {
             float aFrag[MICRO_TILE];
             float bFrag[MICRO_TILE];
 
-#pragma unroll
+            CONDITIONAL_UNROLL_START
             for (int i = 0; i < MICRO_TILE; ++i)
                 aFrag[i] = sA[ty * MICRO_TILE + i][kk];
 
-#pragma unroll
+            CONDITIONAL_UNROLL_START
             for (int j = 0; j < MICRO_TILE; ++j)
                 bFrag[j] = sB[kk][tx * MICRO_TILE + j];
 
-#pragma unroll
+            CONDITIONAL_UNROLL_START
             for (int i = 0; i < MICRO_TILE; ++i)
-#pragma unroll
+                CONDITIONAL_UNROLL_START
                 for (int j = 0; j < MICRO_TILE; ++j)
                     acc[i][j] += aFrag[i] * bFrag[j];
         }
@@ -287,13 +298,13 @@ __global__ void gemm_micro_tiled_kernel(
     }
 
 // Write back
-#pragma unroll
+    CONDITIONAL_UNROLL_START
     for (int i = 0; i < MICRO_TILE; ++i)
     {
         int r = row0 + i;
         if (r < M)
         {
-#pragma unroll
+            CONDITIONAL_UNROLL_START
             for (int j = 0; j < MICRO_TILE; ++j)
             {
                 int c = col0 + j;
