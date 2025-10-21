@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.5...3.20)
 if(USE_CUDA)
     set(CMAKE_CUDA_ARCHITECTURES "native")
     project(PMPP LANGUAGES CXX CUDA)
-    set(DEPENDENCIES benchmark::benchmark CUDA::cudart OpenMP::OpenMP_CXX GTest::gtest_main)
+    set(DEPENDENCIES benchmark::benchmark CUDA::cudart CUDA::cublas OpenMP::OpenMP_CXX GTest::gtest_main)
 
     # Add library with proper CUDA compilation
     add_library(PMPP vector_add.cu vector_add.h gemm.cu gemm.h)

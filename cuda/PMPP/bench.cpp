@@ -1,8 +1,16 @@
 #include "gemm.h"
 #include "vector_add.h"
 #include <benchmark/benchmark.h>
+#include <cmath>
 #include <random>
 #include <vector>
+#include <cublas_v2.h>
+#include <cuda_runtime.h>
+
+// =============================================
+// Vector Add Benchmarks
+// Measures raw throughput (GB/s) and scaling.
+// =============================================
 
 class VectorAddBenchmark : public benchmark::Fixture {
 public:
@@ -38,10 +46,14 @@ BENCHMARK_DEFINE_F(VectorAddBenchmark, CPU)(benchmark::State &state) {
     benchmark::DoNotOptimize(C.data());
   }
 
-  // Calculate throughput
-  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * N * 3 *
-                          sizeof(float));
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * N);
+  // Throughput: read A,B write C (3 * N * sizeof(float)) per iteration.
+  const double bytes_per_iter = static_cast<double>(N) * 3.0 * sizeof(float);
+  state.SetBytesProcessed(
+      static_cast<int64_t>(state.iterations() * bytes_per_iter));
+  // Report GiB/s (binary gigabytes per second)
+  state.counters["GiB/s"] = benchmark::Counter(
+      (bytes_per_iter * state.iterations()) / (1024.0 * 1024.0 * 1024.0),
+      benchmark::Counter::kIsRate);
 }
 
 BENCHMARK_DEFINE_F(VectorAddBenchmark, GPU)(benchmark::State &state) {
@@ -52,21 +64,25 @@ BENCHMARK_DEFINE_F(VectorAddBenchmark, GPU)(benchmark::State &state) {
     benchmark::DoNotOptimize(C.data());
   }
 
-  // Calculate throughput
-  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * N * 3 *
-                          sizeof(float));
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * N);
+  const double bytes_per_iter = static_cast<double>(N) * 3.0 * sizeof(float);
+  state.SetBytesProcessed(
+      static_cast<int64_t>(state.iterations() * bytes_per_iter));
+  state.counters["GiB/s"] = benchmark::Counter(
+      (bytes_per_iter * state.iterations()) / (1024.0 * 1024.0 * 1024.0),
+      benchmark::Counter::kIsRate);
 }
 
 // Register benchmarks for different vector sizes
 BENCHMARK_REGISTER_F(VectorAddBenchmark, CPU)
+    ->RangeMultiplier(4)
     ->Range(1024, 1024 * 1024 * 16) // 1K to 16M elements
-    ->Unit(benchmark::kMicrosecond)
+    ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(VectorAddBenchmark, GPU)
-    ->Range(1024, 1024 * 1024 * 16) // 1K to 16M elements
-    ->Unit(benchmark::kMicrosecond)
+    ->RangeMultiplier(4)
+    ->Range(1024, 1024 * 1024 * 16)
+    ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 // Memory bandwidth focused benchmarks
@@ -83,9 +99,13 @@ static void BM_CPU_VectorAdd_Bandwidth(benchmark::State &state) {
     benchmark::DoNotOptimize(C.data());
   }
 
-  double bytes_per_iteration = N * 3 * sizeof(float); // Read A, B; Write C
+  double bytes_per_iteration =
+      static_cast<double>(N) * 3.0 * sizeof(float); // Read A, B; Write C
   state.SetBytesProcessed(
       static_cast<int64_t>(state.iterations() * bytes_per_iteration));
+  state.counters["GiB/s"] = benchmark::Counter(
+      (bytes_per_iteration * state.iterations()) / (1024.0 * 1024.0 * 1024.0),
+      benchmark::Counter::kIsRate);
 }
 
 static void BM_GPU_VectorAdd_Bandwidth(benchmark::State &state) {
@@ -101,18 +121,24 @@ static void BM_GPU_VectorAdd_Bandwidth(benchmark::State &state) {
     benchmark::DoNotOptimize(C.data());
   }
 
-  double bytes_per_iteration = N * 3 * sizeof(float); // Read A, B; Write C
+  double bytes_per_iteration =
+      static_cast<double>(N) * 3.0 * sizeof(float); // Read A, B; Write C
   state.SetBytesProcessed(
       static_cast<int64_t>(state.iterations() * bytes_per_iteration));
+  state.counters["GiB/s"] = benchmark::Counter(
+      (bytes_per_iteration * state.iterations()) / (1024.0 * 1024.0 * 1024.0),
+      benchmark::Counter::kIsRate);
 }
 
 BENCHMARK(BM_CPU_VectorAdd_Bandwidth)
-    ->Range(1024 * 1024, 1024 * 1024 * 64) // 1M to 64M elements
+    ->RangeMultiplier(2)
+    ->Range(1024 * 1024, 1024 * 1024 * 64)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 BENCHMARK(BM_GPU_VectorAdd_Bandwidth)
-    ->Range(1024 * 1024, 1024 * 1024 * 64) // 1M to 64M elements
+    ->RangeMultiplier(2)
+    ->Range(1024 * 1024, 1024 * 1024 * 64)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
@@ -144,12 +170,19 @@ static void BM_GPU_VectorAdd_Cache(benchmark::State &state) {
 }
 
 BENCHMARK(BM_CPU_VectorAdd_Cache)
-    ->Range(8, 8192) // 8 to 8K elements (fits in various cache levels)
-    ->Unit(benchmark::kNanosecond);
+    ->RangeMultiplier(2)
+    ->Range(32, 8192)
+    ->Unit(benchmark::kMicrosecond);
 
 BENCHMARK(BM_GPU_VectorAdd_Cache)
-    ->Range(8, 8192) // 8 to 8K elements
-    ->Unit(benchmark::kNanosecond);
+    ->RangeMultiplier(2)
+    ->Range(32, 8192)
+    ->Unit(benchmark::kMicrosecond);
+
+// =============================================
+// GEMM Benchmarks
+// Measures FLOP throughput (GFLOPS) across variants.
+// =============================================
 
 // GEMM Benchmarks
 class CudaGEMMBenchmark : public benchmark::Fixture {
@@ -191,11 +224,50 @@ protected:
 
   // Helper function to calculate metrics
   void SetMetrics(benchmark::State &state) {
-    int64_t flops = static_cast<int64_t>(2) * M * N * K;
-    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * flops);
+    const double flops_per_iter =
+        2.0 * static_cast<double>(M) * N * K; // 2*M*N*K
+    const double bytes_per_iter =
+        static_cast<double>(M * K + K * N + M * N) * sizeof(float);
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations() * flops_per_iter));
+    state.SetBytesProcessed(
+        static_cast<int64_t>(state.iterations() * bytes_per_iter));
+    // state.counters["GFLOPS"] =
+    //     benchmark::Counter((flops_per_iter * state.iterations()) / 1e9,
+    //                        benchmark::Counter::kIsRate);
+  }
 
-    int64_t bytes = static_cast<int64_t>(M * K + K * N + M * N) * sizeof(float);
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * bytes);
+  // cuBLAS helper for reference benchmarks
+  void cublas_gemm(const float *A, const float *B, float *C, int M, int N, int K) {
+    static cublasHandle_t handle = nullptr;
+    if (handle == nullptr) {
+      cublasCreate(&handle);
+    }
+    
+    float *d_A, *d_B, *d_C;
+    size_t sizeA = M * K * sizeof(float);
+    size_t sizeB = K * N * sizeof(float);
+    size_t sizeC = M * N * sizeof(float);
+    
+    cudaMalloc(&d_A, sizeA);
+    cudaMalloc(&d_B, sizeB);
+    cudaMalloc(&d_C, sizeC);
+    
+    cudaMemcpy(d_A, A, sizeA, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, B, sizeB, cudaMemcpyHostToDevice);
+    
+    const float alpha = 1.0f, beta = 0.0f;
+    // C = alpha * A * B + beta * C
+    // Note: cuBLAS uses column-major, but we're treating as row-major
+    // so we compute C^T = B^T * A^T by swapping A,B and dimensions
+    cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 
+                N, M, K, &alpha, d_B, N, d_A, K, &beta, d_C, N);
+    
+    cudaMemcpy(C, d_C, sizeC, cudaMemcpyDeviceToHost);
+    
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
   }
 };
 
@@ -219,6 +291,49 @@ BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Tiled16)(benchmark::State &state) {
 BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Tiled32)(benchmark::State &state) {
   for (auto _ : state) {
     gpu_gemm_tiled(A.data(), B.data(), C.data(), M, N, K, 32);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
+// cuBLAS reference benchmark
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_cuBLAS)(benchmark::State &state) {
+  for (auto _ : state) {
+    cublas_gemm(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
+// Micro-tiled GEMM variants using the same fixture (square matrices only)
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
+                   GPU_MicroTiled_32x2)(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<32, 2>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
+                   GPU_MicroTiled_32x4)(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<32, 4>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
+                   GPU_MicroTiled_64x2)(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<64, 2>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
+                   GPU_MicroTiled_64x4)(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<64, 4>(A.data(), B.data(), C.data(), M, N, K);
     benchmark::DoNotOptimize(C.data());
   }
   SetMetrics(state);
@@ -252,157 +367,80 @@ BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_Tiled32)
   SetMetrics(state);
 }
 
-// Register square matrix benchmarks
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Square)
-    ->Range(16, 512) // 16x16 to 512x512 matrices
+// Register square matrix benchmarks in order of optimization complexity
+// 1. Reference implementation (cuBLAS - optimized baseline)
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_cuBLAS)
+    ->RangeMultiplier(2)
+    ->Range(16, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
+// 2. Naive implementation (basic GPU parallelization)
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Square)
+    ->RangeMultiplier(2)
+    ->Range(16, 16384)
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+// 3. Tiled implementations (shared memory optimization)
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Tiled16)
-    ->Range(16, 512)
+    ->RangeMultiplier(2)
+    ->Range(16, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Tiled32)
-    ->Range(16, 512)
+    ->RangeMultiplier(2)
+    ->Range(16, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
-// Register rectangular matrix benchmarks with various aspect ratios
-// Tall-skinny matrices (M >> N)
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular)
-    ->Args({512, 64, 128})   // Tall matrix: 512x64 * 128x64
-    ->Args({1024, 64, 256})  // Very tall: 1024x64 * 256x64
-    ->Args({2048, 128, 512}) // Extra tall: 2048x128 * 512x128
+// 4. Micro-tiled implementations (advanced thread-level optimization)
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_32x2)
+    ->RangeMultiplier(2)
+    ->Range(32, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
-// Short-wide matrices (N >> M)
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular)
-    ->Args({64, 512, 128})   // Wide matrix: 64x128 * 128x512
-    ->Args({64, 1024, 256})  // Very wide: 64x256 * 256x1024
-    ->Args({128, 2048, 512}) // Extra wide: 128x512 * 512x2048
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_32x4)
+    ->RangeMultiplier(2)
+    ->Range(64, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
-// Deep multiplication (K >> M, N)
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular)
-    ->Args({64, 64, 512})    // Deep: 64x512 * 512x64
-    ->Args({128, 128, 1024}) // Very deep: 128x1024 * 1024x128
-    ->Args({256, 256, 2048}) // Extra deep: 256x2048 * 2048x256
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_64x2)
+    ->RangeMultiplier(2)
+    ->Range(64, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
-// Mixed aspect ratios
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_64x4)
+    ->RangeMultiplier(2)
+    ->Range(64, 16384)
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+// Representative rectangular cases (tall, wide, deep)
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular)
-    ->Args({256, 512, 128})  // Mixed: 256x128 * 128x512
-    ->Args({512, 256, 1024}) // Mixed: 512x1024 * 1024x256
-    ->Args({128, 1024, 256}) // Mixed: 128x256 * 256x1024
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 // Tiled versions for rectangular matrices
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_Tiled16)
-    ->Args({512, 64, 128})   // Tall with 16x16 tiles
-    ->Args({64, 512, 128})   // Wide with 16x16 tiles
-    ->Args({256, 256, 1024}) // Deep with 16x16 tiles
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_Tiled32)
-    ->Args({512, 64, 128})   // Tall with 32x32 tiles
-    ->Args({64, 512, 128})   // Wide with 32x32 tiles
-    ->Args({256, 256, 1024}) // Deep with 32x32 tiles
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
-
-// Thread boundary tests for rectangular matrices
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular)
-    ->Args({32, 64, 32}) // Small rectangular around warp boundaries
-    ->Args({64, 32, 64})
-    ->Args({128, 64, 128}) // Medium rectangular
-    ->Args({64, 128, 64})
-    ->Args({256, 128, 256}) // Large rectangular
-    ->Args({128, 256, 128})
-    ->Unit(benchmark::kMicrosecond);
-
-// Batch-like operations (common in ML workloads)
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular)
-    ->Args({784, 128, 10})    // MNIST-like: image features to hidden layer
-    ->Args({128, 64, 784})    // Hidden layer processing
-    ->Args({1000, 512, 2048}) // ImageNet-like classification
-    ->Args({512, 1000, 2048}) // Reverse classification
-    ->Unit(benchmark::kMillisecond)
-    ->UseRealTime();
-
-// Large matrix tests (assuming 10GB memory limit)
-// Memory usage: A(M*K) + B(K*N) + C(M*N) floats * 4 bytes = total bytes
-// Target ~8GB usage to leave room for GPU overhead
-
-// Large square matrices (~2.7GB each for A, B, C = ~8GB total)
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Square)
-    ->Name("CudaGEMMBenchmark/GPU_Square_Large")
-    ->Arg(13000) // 13k x 13k = ~2.7GB per matrix
-    ->Arg(15000) // 15k x 15k = ~3.6GB per matrix
-    ->Arg(16384) // 16k x 16k = ~4.3GB per matrix (power of 2)
-    ->Unit(benchmark::kMillisecond)
-    ->UseRealTime()
-    ->Iterations(3); // Fewer iterations for large matrices
-
-// Large rectangular - memory bound scenarios
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular)
-    ->Name("CudaGEMMBenchmark/GPU_Rectangular_Large")
-    ->Args({32768, 8192, 4096})  // Tall: 32k x 8k x 4k (~2.1GB total)
-    ->Args({8192, 32768, 4096})  // Wide: 8k x 32k x 4k (~2.1GB total)
-    ->Args({16384, 16384, 8192}) // Deep: 16k x 16k x 8k (~4.2GB total)
-    ->Args({20000, 12000, 8000}) // Mixed large: 20k x 12k x 8k (~3.7GB total)
-    ->Unit(benchmark::kMillisecond)
-    ->UseRealTime()
-    ->Iterations(3);
-
-// Large tiled performance comparison
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Tiled16)
-    ->Name("CudaGEMMBenchmark/GPU_Tiled16_Large")
-    ->Arg(12000) // 12k x 12k with 16x16 tiles
-    ->Arg(14000) // 14k x 14k with 16x16 tiles
-    ->Unit(benchmark::kMillisecond)
-    ->UseRealTime()
-    ->Iterations(3);
-
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Tiled32)
-    ->Name("CudaGEMMBenchmark/GPU_Tiled32_Large")
-    ->Arg(12000) // 12k x 12k with 32x32 tiles
-    ->Arg(14000) // 14k x 14k with 32x32 tiles
-    ->Unit(benchmark::kMillisecond)
-    ->UseRealTime()
-    ->Iterations(3);
-
-// Large rectangular tiled tests
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_Tiled16)
-    ->Name("CudaGEMMBenchmark/GPU_Rectangular_Tiled16_Large")
-    ->Args({24576, 6144, 4096}) // Large tall with 16x16 tiles (~2.4GB)
-    ->Args({6144, 24576, 4096}) // Large wide with 16x16 tiles (~2.4GB)
-    ->Unit(benchmark::kMillisecond)
-    ->UseRealTime()
-    ->Iterations(3);
-
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_Tiled32)
-    ->Name("CudaGEMMBenchmark/GPU_Rectangular_Tiled32_Large")
-    ->Args({24576, 6144, 4096}) // Large tall with 32x32 tiles (~2.4GB)
-    ->Args({6144, 24576, 4096}) // Large wide with 32x32 tiles (~2.4GB)
-    ->Unit(benchmark::kMillisecond)
-    ->UseRealTime()
-    ->Iterations(3);
-
-// Memory-intensive scenarios for stress testing
-BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular)
-    ->Name("CudaGEMMBenchmark/GPU_Rectangular_Stress")
-    ->Args({65536, 2048, 1024}) // Very tall: 65k x 2k x 1k (~0.5GB)
-    ->Args({2048, 65536, 1024}) // Very wide: 2k x 65k x 1k (~0.5GB)
-    ->Args({8192, 8192, 16384}) // Very deep: 8k x 8k x 16k (~4.2GB)
-    ->Args({32768, 4096, 2048}) // Extreme aspect: 32k x 4k x 2k (~1.1GB)
-    ->Unit(benchmark::kMillisecond)
-    ->UseRealTime()
-    ->Iterations(2); // Very few iterations for stress tests
 
 BENCHMARK_MAIN();

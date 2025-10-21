@@ -392,6 +392,75 @@ TEST_F(GEMMTest, MediumMatrices) {
     verifyGEMMResults(C_expected, C_gpu, 1e-3f);
 }
 
+// Micro-tiled GEMM tests comparing against CPU reference
+TEST_F(GEMMTest, MicroTiled_Small) {
+  const int M = 32, N = 32, K = 32;
+  std::vector<float> A, B, C_ref;
+  generateRandomMatrix(A, M, K);
+  generateRandomMatrix(B, K, N);
+  cpu_gemm_reference(A, B, C_ref, M, N, K);
+
+  // Test different micro-tile configurations
+  std::vector<float> C_mt(M * N, 0.0f);
+  std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+  gpu_gemm_micro_tiled<32, 2>(A.data(), B.data(), C_mt.data(), M, N, K);
+  verifyGEMMResults(C_ref, C_mt, 1e-3f);
+
+  std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+  gpu_gemm_micro_tiled<32, 2>(A.data(), B.data(), C_mt.data(), M, N, K); // repeat for determinism check
+  verifyGEMMResults(C_ref, C_mt, 1e-3f);
+}
+
+TEST_F(GEMMTest, MicroTiled_BoundarySizes) {
+  // Sizes around 64 tile with MICRO_TILE 2 and 4
+  struct Case { int M,N,K; int TILE; int MICRO; }; 
+  std::vector<Case> cases = {
+    {63,63,63,64,2}, {64,64,64,64,2}, {65,65,65,64,2},
+    {63,63,63,64,4}, {64,64,64,64,4}, {65,65,65,64,4}
+  };
+  for(const auto &c : cases) {
+    std::vector<float> A,B,C_ref,C_mt(c.M * c.N, 0.0f);
+    generateRandomMatrix(A, c.M, c.K);
+    generateRandomMatrix(B, c.K, c.N);
+    cpu_gemm_reference(A,B,C_ref,c.M,c.N,c.K);
+    std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+    if(c.MICRO == 2) {
+      gpu_gemm_micro_tiled<64, 2>(A.data(), B.data(), C_mt.data(), c.M, c.N, c.K);
+    } else {
+      gpu_gemm_micro_tiled<64, 4>(A.data(), B.data(), C_mt.data(), c.M, c.N, c.K);
+    }
+    verifyGEMMResults(C_ref, C_mt, 2e-3f); // slightly relaxed tolerance
+  }
+}
+
+TEST_F(GEMMTest, MicroTiled_Rectangular) {
+  const int M = 64, N = 48, K = 32; // Non-square
+  std::vector<float> A,B,C_ref,C_mt(M * N, 0.0f);
+  generateRandomMatrix(A, M, K);
+  generateRandomMatrix(B, K, N);
+  cpu_gemm_reference(A,B,C_ref,M,N,K);
+
+  std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+  gpu_gemm_micro_tiled<64, 2>(A.data(), B.data(), C_mt.data(), M, N, K);
+  verifyGEMMResults(C_ref, C_mt, 2e-3f);
+
+  std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+  gpu_gemm_micro_tiled<64, 4>(A.data(), B.data(), C_mt.data(), M, N, K);
+  verifyGEMMResults(C_ref, C_mt, 2e-3f);
+}
+
+TEST_F(GEMMTest, MicroTiled_Larger) {
+  const int M = 96, N = 80, K = 64; // Larger but still manageable
+  std::vector<float> A,B,C_ref,C_mt(M * N, 0.0f);
+  generateRandomMatrix(A, M, K);
+  generateRandomMatrix(B, K, N);
+  cpu_gemm_reference(A,B,C_ref,M,N,K);
+
+  std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+  gpu_gemm_micro_tiled<64, 2>(A.data(), B.data(), C_mt.data(), M, N, K);
+  verifyGEMMResults(C_ref, C_mt, 2e-3f);
+}
+
 // Thread boundary style test for tiled kernel across sizes and tile options
 TEST_F(GEMMTest, TiledGEMM_ThreadBoundaries) {
   // Sizes around tile boundaries; include some not divisible by tile
