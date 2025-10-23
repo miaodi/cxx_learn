@@ -400,14 +400,22 @@ TEST_F(GEMMTest, MicroTiled_Small) {
   generateRandomMatrix(B, K, N);
   cpu_gemm_reference(A, B, C_ref, M, N, K);
 
-  // Test different micro-tile configurations
+  // Test different micro-tile configurations (non-coalesced first, then coalesced)
   std::vector<float> C_mt(M * N, 0.0f);
+  
+  // Non-coalesced version
   std::fill(C_mt.begin(), C_mt.end(), 0.0f);
-  gpu_gemm_micro_tiled<32, 2>(A.data(), B.data(), C_mt.data(), M, N, K);
+  gpu_gemm_micro_tiled<32, 2, false>(A.data(), B.data(), C_mt.data(), M, N, K);
   verifyGEMMResults(C_ref, C_mt, 1e-3f);
 
+  // Coalesced version  
   std::fill(C_mt.begin(), C_mt.end(), 0.0f);
-  gpu_gemm_micro_tiled<32, 2>(A.data(), B.data(), C_mt.data(), M, N, K); // repeat for determinism check
+  gpu_gemm_micro_tiled<32, 2, true>(A.data(), B.data(), C_mt.data(), M, N, K);
+  verifyGEMMResults(C_ref, C_mt, 1e-3f);
+
+  // Repeat coalesced for determinism check
+  std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+  gpu_gemm_micro_tiled<32, 2, true>(A.data(), B.data(), C_mt.data(), M, N, K);
   verifyGEMMResults(C_ref, C_mt, 1e-3f);
 }
 
@@ -423,11 +431,25 @@ TEST_F(GEMMTest, MicroTiled_BoundarySizes) {
     generateRandomMatrix(A, c.M, c.K);
     generateRandomMatrix(B, c.K, c.N);
     cpu_gemm_reference(A,B,C_ref,c.M,c.N,c.K);
+    
+    // Test both non-coalesced and coalesced versions
     std::fill(C_mt.begin(), C_mt.end(), 0.0f);
     if(c.MICRO == 2) {
-      gpu_gemm_micro_tiled<64, 2>(A.data(), B.data(), C_mt.data(), c.M, c.N, c.K);
+      // Non-coalesced first
+      gpu_gemm_micro_tiled<64, 2, false>(A.data(), B.data(), C_mt.data(), c.M, c.N, c.K);
+      verifyGEMMResults(C_ref, C_mt, 2e-3f);
+      
+      // Then coalesced
+      std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+      gpu_gemm_micro_tiled<64, 2, true>(A.data(), B.data(), C_mt.data(), c.M, c.N, c.K);
     } else {
-      gpu_gemm_micro_tiled<64, 4>(A.data(), B.data(), C_mt.data(), c.M, c.N, c.K);
+      // Non-coalesced first
+      gpu_gemm_micro_tiled<64, 4, false>(A.data(), B.data(), C_mt.data(), c.M, c.N, c.K);
+      verifyGEMMResults(C_ref, C_mt, 2e-3f);
+      
+      // Then coalesced
+      std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+      gpu_gemm_micro_tiled<64, 4, true>(A.data(), B.data(), C_mt.data(), c.M, c.N, c.K);
     }
     verifyGEMMResults(C_ref, C_mt, 2e-3f); // slightly relaxed tolerance
   }
@@ -440,12 +462,23 @@ TEST_F(GEMMTest, MicroTiled_Rectangular) {
   generateRandomMatrix(B, K, N);
   cpu_gemm_reference(A,B,C_ref,M,N,K);
 
+  // Test both non-coalesced and coalesced for different micro-tile sizes
+  // 64x2 variant
   std::fill(C_mt.begin(), C_mt.end(), 0.0f);
-  gpu_gemm_micro_tiled<64, 2>(A.data(), B.data(), C_mt.data(), M, N, K);
+  gpu_gemm_micro_tiled<64, 2, false>(A.data(), B.data(), C_mt.data(), M, N, K);
   verifyGEMMResults(C_ref, C_mt, 2e-3f);
 
   std::fill(C_mt.begin(), C_mt.end(), 0.0f);
-  gpu_gemm_micro_tiled<64, 4>(A.data(), B.data(), C_mt.data(), M, N, K);
+  gpu_gemm_micro_tiled<64, 2, true>(A.data(), B.data(), C_mt.data(), M, N, K);
+  verifyGEMMResults(C_ref, C_mt, 2e-3f);
+
+  // 64x4 variant
+  std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+  gpu_gemm_micro_tiled<64, 4, false>(A.data(), B.data(), C_mt.data(), M, N, K);
+  verifyGEMMResults(C_ref, C_mt, 2e-3f);
+
+  std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+  gpu_gemm_micro_tiled<64, 4, true>(A.data(), B.data(), C_mt.data(), M, N, K);
   verifyGEMMResults(C_ref, C_mt, 2e-3f);
 }
 
@@ -456,8 +489,13 @@ TEST_F(GEMMTest, MicroTiled_Larger) {
   generateRandomMatrix(B, K, N);
   cpu_gemm_reference(A,B,C_ref,M,N,K);
 
+  // Test 64x2 - non-coalesced first, then coalesced
   std::fill(C_mt.begin(), C_mt.end(), 0.0f);
-  gpu_gemm_micro_tiled<64, 2>(A.data(), B.data(), C_mt.data(), M, N, K);
+  gpu_gemm_micro_tiled<64, 2, false>(A.data(), B.data(), C_mt.data(), M, N, K);
+  verifyGEMMResults(C_ref, C_mt, 2e-3f);
+
+  std::fill(C_mt.begin(), C_mt.end(), 0.0f);
+  gpu_gemm_micro_tiled<64, 2, true>(A.data(), B.data(), C_mt.data(), M, N, K);
   verifyGEMMResults(C_ref, C_mt, 2e-3f);
 }
 

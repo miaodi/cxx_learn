@@ -4,7 +4,7 @@
 
 // Conditional unroll macro - can be defined at compile time
 #ifndef USE_PRAGMA_UNROLL
-#define USE_PRAGMA_UNROLL 0
+#define USE_PRAGMA_UNROLL 1
 #endif
 
 #if USE_PRAGMA_UNROLL
@@ -175,7 +175,7 @@ __global__ void gemm_tiled_kernel(
     }
 }
 
-template <int TILE, int MICRO_TILE>
+template <int TILE, int MICRO_TILE, bool USE_COALESCED>
 void gpu_gemm_micro_tiled(
     const float *A,
     const float *B,
@@ -200,7 +200,7 @@ void gpu_gemm_micro_tiled(
     cudaMemcpy(d_C, C, sizeC, cudaMemcpyHostToDevice);
     cudaDeviceSynchronize();
 
-    gemm_micro_tiled_kernel<TILE, MICRO_TILE><<<gridDim, blockDim>>>(
+    gemm_micro_tiled_kernel<TILE, MICRO_TILE, USE_COALESCED><<<gridDim, blockDim>>>(
         d_A, d_B, d_C, M, N, K);
     cudaDeviceSynchronize();
 
@@ -210,7 +210,7 @@ void gpu_gemm_micro_tiled(
     cudaFree(d_C);
 }
 
-template <int TILE, int MICRO_TILE>
+template <int TILE, int MICRO_TILE, bool USE_COALESCED>
 __global__ void gemm_micro_tiled_kernel(
     const float *__restrict__ A, // M×K
     const float *__restrict__ B, // K×N
@@ -237,42 +237,81 @@ __global__ void gemm_micro_tiled_kernel(
     CONDITIONAL_UNROLL_START
     for (int i = 0; i < MICRO_TILE; i++)
         CONDITIONAL_UNROLL_START
-        for (int j = 0; j < MICRO_TILE; j++)
-            acc[i][j] = 0.0f;
+    for (int j = 0; j < MICRO_TILE; j++)
+        acc[i][j] = 0.0f;
 
     int numTiles = (K + TILE - 1) / TILE;
 
+    CONDITIONAL_UNROLL_START
     for (int t = 0; t < numTiles; ++t)
     {
-        // Cooperative load into shared memory.
-        // Each thread loads a MICRO_TILE×MICRO_TILE patch of A and B into sA/sB.
-        int aColBase = t * TILE + tx * MICRO_TILE; // along K
-        int bRowBase = t * TILE + ty * MICRO_TILE; // along K
-
-        CONDITIONAL_UNROLL_START
-        for (int i = 0; i < MICRO_TILE; ++i)
+        if constexpr (USE_COALESCED)
         {
-            int rA = row0 + i;
-            int rB = bRowBase + i;
+            // Cooperative load with truly coalesced global memory accesses using 2-level loops
+            // Handle cases where TILE*TILE % threadsPerBlock != 0
+            int linearThread = ty * blockDim.x + tx;
+            int threadsPerBlock = blockDim.x * blockDim.y;
+            int tileArea = TILE * TILE;
+
+            // Calculate how many complete rows each thread will handle
+            int iterations = (tileArea + threadsPerBlock - 1) / threadsPerBlock;
+
+            // Each thread processes multiple elements in row-major order for coalescing
+            CONDITIONAL_UNROLL_START
+            for (int e = 0; e < iterations; ++e)
+            {
+                int idx = e * threadsPerBlock + linearThread;
+
+                // Only process if within bounds
+                if (idx < tileArea)
+                {
+                    int localRow = idx / TILE;
+                    int localCol = idx % TILE;
+
+                    // Load matrix A: coalesced access along K dimension
+                    int gRowA = blockIdx.y * TILE + localRow;
+                    int gColA = t * TILE + localCol;
+                    sA[localRow][localCol] =
+                        (gRowA < M && gColA < K) ? A[gRowA * K + gColA] : 0.0f;
+
+                    // Load matrix B: coalesced access along N dimension
+                    int gRowB = t * TILE + localRow;
+                    int gColB = blockIdx.x * TILE + localCol;
+                    sB[localRow][localCol] =
+                        (gRowB < K && gColB < N) ? B[gRowB * N + gColB] : 0.0f;
+                }
+            }
+        }
+        else
+        {
+            // Original micro-tile loads (potentially non-coalesced) for comparison.
+            int aColBase = t * TILE + tx * MICRO_TILE; // along K
+            int bRowBase = t * TILE + ty * MICRO_TILE; // along K
 
             CONDITIONAL_UNROLL_START
-            for (int j = 0; j < MICRO_TILE; ++j)
+            for (int i = 0; i < MICRO_TILE; ++i)
             {
-                int cA = aColBase + j;
-                int cB = col0 + j;
+                int rA = row0 + i;
+                int rB = bRowBase + i;
 
-                // Store into the corresponding place in the TILE×TILE shared tile
-                sA[ty * MICRO_TILE + i][tx * MICRO_TILE + j] =
-                    (rA < M && cA < K) ? A[rA * K + cA] : 0.0f;
+                CONDITIONAL_UNROLL_START
+                for (int j = 0; j < MICRO_TILE; ++j)
+                {
+                    int cA = aColBase + j;
+                    int cB = col0 + j;
 
-                sB[ty * MICRO_TILE + i][tx * MICRO_TILE + j] =
-                    (rB < K && cB < N) ? B[rB * N + cB] : 0.0f;
+                    sA[ty * MICRO_TILE + i][tx * MICRO_TILE + j] =
+                        (rA < M && cA < K) ? A[rA * K + cA] : 0.0f;
+
+                    sB[ty * MICRO_TILE + i][tx * MICRO_TILE + j] =
+                        (rB < K && cB < N) ? B[rB * N + cB] : 0.0f;
+                }
             }
         }
 
         __syncthreads();
 
-// Compute using this K-tile
+        // Compute using this K-tile
         CONDITIONAL_UNROLL_START
         for (int kk = 0; kk < TILE; ++kk)
         {
@@ -290,14 +329,14 @@ __global__ void gemm_micro_tiled_kernel(
             CONDITIONAL_UNROLL_START
             for (int i = 0; i < MICRO_TILE; ++i)
                 CONDITIONAL_UNROLL_START
-                for (int j = 0; j < MICRO_TILE; ++j)
-                    acc[i][j] += aFrag[i] * bFrag[j];
+            for (int j = 0; j < MICRO_TILE; ++j)
+                acc[i][j] += aFrag[i] * bFrag[j];
         }
 
         __syncthreads();
     }
 
-// Write back
+    // Write back
     CONDITIONAL_UNROLL_START
     for (int i = 0; i < MICRO_TILE; ++i)
     {
@@ -326,22 +365,42 @@ template __global__ void gemm_tiled_kernel<32>(
     float *__restrict__ C,
     int M, int N, int K);
 
-template void gpu_gemm_micro_tiled<64, 2>(
+template void gpu_gemm_micro_tiled<64, 2, true>(
     const float *A,
     const float *B,
     float *C,
     int M, int N, int K);
-template void gpu_gemm_micro_tiled<64, 4>(
+template void gpu_gemm_micro_tiled<64, 2, false>(
     const float *A,
     const float *B,
     float *C,
     int M, int N, int K);
-template void gpu_gemm_micro_tiled<32, 2>(
+template void gpu_gemm_micro_tiled<64, 4, true>(
     const float *A,
     const float *B,
     float *C,
     int M, int N, int K);
-template void gpu_gemm_micro_tiled<32, 4>(
+template void gpu_gemm_micro_tiled<64, 4, false>(
+    const float *A,
+    const float *B,
+    float *C,
+    int M, int N, int K);
+template void gpu_gemm_micro_tiled<32, 2, true>(
+    const float *A,
+    const float *B,
+    float *C,
+    int M, int N, int K);
+template void gpu_gemm_micro_tiled<32, 2, false>(
+    const float *A,
+    const float *B,
+    float *C,
+    int M, int N, int K);
+template void gpu_gemm_micro_tiled<32, 4, true>(
+    const float *A,
+    const float *B,
+    float *C,
+    int M, int N, int K);
+template void gpu_gemm_micro_tiled<32, 4, false>(
     const float *A,
     const float *B,
     float *C,

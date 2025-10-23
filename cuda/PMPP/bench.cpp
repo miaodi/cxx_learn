@@ -306,10 +306,45 @@ BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_cuBLAS)(benchmark::State &state) {
 }
 
 // Micro-tiled GEMM variants using the same fixture (square matrices only)
+// Non-coalesced versions (showing original micro-tiling approach)
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
+                   GPU_MicroTiled_32x2_NonCoalesced)(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<32, 2, false>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
+                   GPU_MicroTiled_32x4_NonCoalesced)(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<32, 4, false>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
+                   GPU_MicroTiled_64x2_NonCoalesced)(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<64, 2, false>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
+                   GPU_MicroTiled_64x4_NonCoalesced)(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<64, 4, false>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
+// Coalesced versions (showing memory access optimization)
 BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
                    GPU_MicroTiled_32x2)(benchmark::State &state) {
   for (auto _ : state) {
-    gpu_gemm_micro_tiled<32, 2>(A.data(), B.data(), C.data(), M, N, K);
+    gpu_gemm_micro_tiled<32, 2, true>(A.data(), B.data(), C.data(), M, N, K);
     benchmark::DoNotOptimize(C.data());
   }
   SetMetrics(state);
@@ -317,7 +352,7 @@ BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
 BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
                    GPU_MicroTiled_32x4)(benchmark::State &state) {
   for (auto _ : state) {
-    gpu_gemm_micro_tiled<32, 4>(A.data(), B.data(), C.data(), M, N, K);
+    gpu_gemm_micro_tiled<32, 4, true>(A.data(), B.data(), C.data(), M, N, K);
     benchmark::DoNotOptimize(C.data());
   }
   SetMetrics(state);
@@ -325,7 +360,7 @@ BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
 BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
                    GPU_MicroTiled_64x2)(benchmark::State &state) {
   for (auto _ : state) {
-    gpu_gemm_micro_tiled<64, 2>(A.data(), B.data(), C.data(), M, N, K);
+    gpu_gemm_micro_tiled<64, 2, true>(A.data(), B.data(), C.data(), M, N, K);
     benchmark::DoNotOptimize(C.data());
   }
   SetMetrics(state);
@@ -333,7 +368,7 @@ BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
 BENCHMARK_DEFINE_F(CudaGEMMBenchmark,
                    GPU_MicroTiled_64x4)(benchmark::State &state) {
   for (auto _ : state) {
-    gpu_gemm_micro_tiled<64, 4>(A.data(), B.data(), C.data(), M, N, K);
+    gpu_gemm_micro_tiled<64, 4, true>(A.data(), B.data(), C.data(), M, N, K);
     benchmark::DoNotOptimize(C.data());
   }
   SetMetrics(state);
@@ -376,10 +411,49 @@ BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_cuBLAS)
   SetMetrics(state);
 }
 
+// Rectangular matrix micro-tiled benchmarks
+// Non-coalesced versions first
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x2_NonCoalesced)
+(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<32, 2, false>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x4_NonCoalesced)
+(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<32, 4, false>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x2_NonCoalesced)
+(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<64, 2, false>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
+BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x4_NonCoalesced)
+(benchmark::State &state) {
+  for (auto _ : state) {
+    gpu_gemm_micro_tiled<64, 4, false>(A.data(), B.data(), C.data(), M, N, K);
+    benchmark::DoNotOptimize(C.data());
+  }
+  SetMetrics(state);
+}
+
+// Coalesced versions
 BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x2)
 (benchmark::State &state) {
   for (auto _ : state) {
-    gpu_gemm_micro_tiled<32, 2>(A.data(), B.data(), C.data(), M, N, K);
+    gpu_gemm_micro_tiled<32, 2, true>(A.data(), B.data(), C.data(), M, N, K);
     benchmark::DoNotOptimize(C.data());
   }
   SetMetrics(state);
@@ -388,7 +462,7 @@ BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x2)
 BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x4)
 (benchmark::State &state) {
   for (auto _ : state) {
-    gpu_gemm_micro_tiled<32, 4>(A.data(), B.data(), C.data(), M, N, K);
+    gpu_gemm_micro_tiled<32, 4, true>(A.data(), B.data(), C.data(), M, N, K);
     benchmark::DoNotOptimize(C.data());
   }
   SetMetrics(state);
@@ -397,7 +471,7 @@ BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x4)
 BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x2)
 (benchmark::State &state) {
   for (auto _ : state) {
-    gpu_gemm_micro_tiled<64, 2>(A.data(), B.data(), C.data(), M, N, K);
+    gpu_gemm_micro_tiled<64, 2, true>(A.data(), B.data(), C.data(), M, N, K);
     benchmark::DoNotOptimize(C.data());
   }
   SetMetrics(state);
@@ -406,7 +480,7 @@ BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x2)
 BENCHMARK_DEFINE_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x4)
 (benchmark::State &state) {
   for (auto _ : state) {
-    gpu_gemm_micro_tiled<64, 4>(A.data(), B.data(), C.data(), M, N, K);
+    gpu_gemm_micro_tiled<64, 4, true>(A.data(), B.data(), C.data(), M, N, K);
     benchmark::DoNotOptimize(C.data());
   }
   SetMetrics(state);
@@ -445,29 +519,59 @@ BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Tiled32)
     ->UseRealTime();
 
 // 4. Micro-tiled implementations (advanced thread-level optimization)
+// 4a. Non-coalesced micro-tiled (original micro-tiling approach)
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_32x2_NonCoalesced)
+    ->Name("GEMM_Square_MicroTiled_32x2_NonCoalesced")
+    ->RangeMultiplier(2)
+    ->Range(32, 16384)
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_32x4_NonCoalesced)
+    ->Name("GEMM_Square_MicroTiled_32x4_NonCoalesced")
+    ->RangeMultiplier(2)
+    ->Range(64, 16384)
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_64x2_NonCoalesced)
+    ->Name("GEMM_Square_MicroTiled_64x2_NonCoalesced")
+    ->RangeMultiplier(2)
+    ->Range(64, 16384)
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_64x4_NonCoalesced)
+    ->Name("GEMM_Square_MicroTiled_64x4_NonCoalesced")
+    ->RangeMultiplier(2)
+    ->Range(64, 16384)
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+// 4b. Coalesced micro-tiled (memory access optimization)
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_32x2)
-    ->Name("GEMM_Square_MicroTiled_32x2")
+    ->Name("GEMM_Square_MicroTiled_32x2_Coalesced")
     ->RangeMultiplier(2)
     ->Range(32, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_32x4)
-    ->Name("GEMM_Square_MicroTiled_32x4")
+    ->Name("GEMM_Square_MicroTiled_32x4_Coalesced")
     ->RangeMultiplier(2)
     ->Range(64, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_64x2)
-    ->Name("GEMM_Square_MicroTiled_64x2")
+    ->Name("GEMM_Square_MicroTiled_64x2_Coalesced")
     ->RangeMultiplier(2)
     ->Range(64, 16384)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_MicroTiled_64x4)
-    ->Name("GEMM_Square_MicroTiled_64x4")
+    ->Name("GEMM_Square_MicroTiled_64x4_Coalesced")
     ->RangeMultiplier(2)
     ->Range(64, 16384)
     ->Unit(benchmark::kMillisecond)
@@ -510,8 +614,42 @@ BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_Tiled32)
     ->UseRealTime();
 
 // Micro-tiled versions for rectangular matrices
+// Non-coalesced variants first
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x2_NonCoalesced)
+    ->Name("GEMM_Rectangular_MicroTiled_32x2_NonCoalesced")
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x4_NonCoalesced)
+    ->Name("GEMM_Rectangular_MicroTiled_32x4_NonCoalesced")
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x2_NonCoalesced)
+    ->Name("GEMM_Rectangular_MicroTiled_64x2_NonCoalesced")
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x4_NonCoalesced)
+    ->Name("GEMM_Rectangular_MicroTiled_64x4_NonCoalesced")
+    ->Args({512, 64, 128})
+    ->Args({64, 512, 128})
+    ->Args({128, 128, 512})
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+// Coalesced variants
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x2)
-    ->Name("GEMM_Rectangular_MicroTiled_32x2")
+    ->Name("GEMM_Rectangular_MicroTiled_32x2_Coalesced")
     ->Args({512, 64, 128})
     ->Args({64, 512, 128})
     ->Args({128, 128, 512})
@@ -519,7 +657,7 @@ BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x2)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x4)
-    ->Name("GEMM_Rectangular_MicroTiled_32x4")
+    ->Name("GEMM_Rectangular_MicroTiled_32x4_Coalesced")
     ->Args({512, 64, 128})
     ->Args({64, 512, 128})
     ->Args({128, 128, 512})
@@ -527,7 +665,7 @@ BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_32x4)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x2)
-    ->Name("GEMM_Rectangular_MicroTiled_64x2")
+    ->Name("GEMM_Rectangular_MicroTiled_64x2_Coalesced")
     ->Args({512, 64, 128})
     ->Args({64, 512, 128})
     ->Args({128, 128, 512})
@@ -535,7 +673,7 @@ BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x2)
     ->UseRealTime();
 
 BENCHMARK_REGISTER_F(CudaGEMMBenchmark, GPU_Rectangular_MicroTiled_64x4)
-    ->Name("GEMM_Rectangular_MicroTiled_64x4")
+    ->Name("GEMM_Rectangular_MicroTiled_64x4_Coalesced")
     ->Args({512, 64, 128})
     ->Args({64, 512, 128})
     ->Args({128, 128, 512})
