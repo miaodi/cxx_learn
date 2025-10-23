@@ -229,6 +229,12 @@ __global__ void gemm_micro_tiled_kernel(
     int row0 = blockIdx.y * TILE + ty * MICRO_TILE;
     int col0 = blockIdx.x * TILE + tx * MICRO_TILE;
 
+    // Cooperative load with truly coalesced global memory accesses using 2-level loops
+    // Handle cases where TILE*TILE % threadsPerBlock != 0
+    int linearThread = ty * blockDim.x + tx;
+    int threadsPerBlock = blockDim.x * blockDim.y;
+    int tileArea = TILE * TILE;
+
     __shared__ float sA[TILE][TILE];
     __shared__ float sB[TILE][TILE];
 
@@ -247,39 +253,25 @@ __global__ void gemm_micro_tiled_kernel(
     {
         if constexpr (USE_COALESCED)
         {
-            // Cooperative load with truly coalesced global memory accesses using 2-level loops
-            // Handle cases where TILE*TILE % threadsPerBlock != 0
-            int linearThread = ty * blockDim.x + tx;
-            int threadsPerBlock = blockDim.x * blockDim.y;
-            int tileArea = TILE * TILE;
-
-            // Calculate how many complete rows each thread will handle
-            int iterations = (tileArea + threadsPerBlock - 1) / threadsPerBlock;
 
             // Each thread processes multiple elements in row-major order for coalescing
             CONDITIONAL_UNROLL_START
-            for (int e = 0; e < iterations; ++e)
+            for (int idx = linearThread; idx < tileArea; idx += threadsPerBlock)
             {
-                int idx = e * threadsPerBlock + linearThread;
+                int localRow = idx / TILE;
+                int localCol = idx % TILE;
 
-                // Only process if within bounds
-                if (idx < tileArea)
-                {
-                    int localRow = idx / TILE;
-                    int localCol = idx % TILE;
+                // Load matrix A: coalesced access along K dimension
+                int gRowA = blockIdx.y * TILE + localRow;
+                int gColA = t * TILE + localCol;
+                sA[localRow][localCol] =
+                    (gRowA < M && gColA < K) ? A[gRowA * K + gColA] : 0.0f;
 
-                    // Load matrix A: coalesced access along K dimension
-                    int gRowA = blockIdx.y * TILE + localRow;
-                    int gColA = t * TILE + localCol;
-                    sA[localRow][localCol] =
-                        (gRowA < M && gColA < K) ? A[gRowA * K + gColA] : 0.0f;
-
-                    // Load matrix B: coalesced access along N dimension
-                    int gRowB = t * TILE + localRow;
-                    int gColB = blockIdx.x * TILE + localCol;
-                    sB[localRow][localCol] =
-                        (gRowB < K && gColB < N) ? B[gRowB * N + gColB] : 0.0f;
-                }
+                // Load matrix B: coalesced access along N dimension
+                int gRowB = t * TILE + localRow;
+                int gColB = blockIdx.x * TILE + localCol;
+                sB[localRow][localCol] =
+                    (gRowB < K && gColB < N) ? B[gRowB * N + gColB] : 0.0f;
             }
         }
         else
