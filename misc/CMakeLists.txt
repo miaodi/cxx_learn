@@ -1,18 +1,38 @@
-cmake_minimum_required(VERSION 3.5...3.20)
-project(misc CXX)
+cmake_minimum_required(VERSION 3.18)
+project(misc LANGUAGES CXX)
 
-add_library(mylib STATIC
-  func.cpp
+# ============================================================================
+# Library
+# ============================================================================
+
+add_library(mylib STATIC func.cpp)
+target_include_directories(mylib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+# ============================================================================
+# Benchmark Executable
+# ============================================================================
+
+add_executable(misc_bench bench.cpp)
+target_link_libraries(misc_bench PRIVATE
+  benchmark::benchmark
+  GTest::gtest_main
+  GTest::gmock_main
+  OpenMP::OpenMP_CXX
+  mylib
 )
 
-set(SRC bench.cpp)
+# ============================================================================
+# Test Executable
+# ============================================================================
 
-set(DEPENDENCIES benchmark::benchmark GTest::gtest_main GTest::gmock_main  OpenMP::OpenMP_CXX mylib)
+add_executable(misc_tests test.cpp)
+target_link_libraries(misc_tests PRIVATE
+  GTest::gtest_main
+  GTest::gmock_main
+  OpenMP::OpenMP_CXX
+  mylib
+)
 
-add_executable(misc_bench ${SRC})
-# set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME ${ONE_BENCH_EXEC}) 
-target_link_libraries(misc_bench PRIVATE ${DEPENDENCIES})
-
-set(TEST_SRC test.cpp)
-add_executable(misc_tests ${TEST_SRC})
-target_link_libraries(misc_tests PRIVATE ${DEPENDENCIES})
+# Enable testing
+enable_testing()
+add_test(NAME misc_tests COMMAND misc_tests)

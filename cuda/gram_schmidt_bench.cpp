@@ -8,19 +8,16 @@ template <typename T>
 class GramSchmidtTemplatedBenchmark : public benchmark::Fixture {
 public:
   void SetUp(const ::benchmark::State &state) override {
-    if (state.range_size() == 2) {
-      m = state.range(0);
-      n = state.range(1);
-    } else {
-      // Square matrix
-      m = n = state.range(0);
-    }
+    // Check if we have two ranges (m and n) or one (square matrix)
+    // Use range(1) to check if a second range exists
+    m = state.range(0);
+    n = (state.range(1) > 0) ? state.range(1) : state.range(0);
 
     input_matrix.resize(m * n);
     gram_schmidt::generateRandomMatrix(input_matrix.data(), m, n, 42);
   }
 
-  void TearDown(const ::benchmark::State &state) override {
+  void TearDown([[maybe_unused]] const ::benchmark::State &state) override {
     // Cleanup if needed
   }
 

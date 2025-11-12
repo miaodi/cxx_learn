@@ -22,7 +22,7 @@ public:
     }
   }
 
-  void TearDown(const ::benchmark::State &state) override {
+  void TearDown([[maybe_unused]] const ::benchmark::State &state) override {
     // Cleanup if needed
   }
 
@@ -156,13 +156,15 @@ class CudaGEMMBenchmark : public benchmark::Fixture {
 public:
   void SetUp(const ::benchmark::State &state) override {
     // For square matrices, all dimensions are the same
-    if (state.range_size() == 1) {
-      M = N = K = state.range(0);
-    } else {
-      // For non-square matrices, use separate dimensions
-      M = state.range(0);
+    // Check if second range exists by seeing if range(1) > 0
+    M = state.range(0);
+    if (state.range(1) > 0) {
+      // Non-square matrices with separate dimensions
       N = state.range(1);
       K = state.range(2);
+    } else {
+      // Square matrices
+      N = K = M;
     }
 
     A.resize(M * K);
@@ -181,7 +183,7 @@ public:
     }
   }
 
-  void TearDown(const ::benchmark::State &state) override {
+  void TearDown([[maybe_unused]] const ::benchmark::State &state) override {
     // Cleanup if needed
   }
 

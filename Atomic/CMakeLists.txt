@@ -1,10 +1,13 @@
-cmake_minimum_required(VERSION 3.5...3.20)
-project(Atomic CXX)
+cmake_minimum_required(VERSION 3.18)
+project(Atomic LANGUAGES CXX)
 
-set(SRC test.cpp memory_order_test.cpp)
+add_executable(Atomic test.cpp memory_order_test.cpp)
+target_link_libraries(Atomic PRIVATE
+  benchmark::benchmark
+  GTest::gtest_main
+  GTest::gmock_main
+  OpenMP::OpenMP_CXX
+)
 
-set(DEPENDENCIES benchmark::benchmark GTest::gtest_main GTest::gmock_main  OpenMP::OpenMP_CXX)
-
-add_executable(${PROJECT_NAME} ${SRC})
-# set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME ${ONE_BENCH_EXEC}) 
-target_link_libraries(${PROJECT_NAME} PRIVATE ${DEPENDENCIES})
+enable_testing()
+add_test(NAME Atomic COMMAND Atomic)

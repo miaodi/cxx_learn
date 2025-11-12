@@ -1,8 +1,5 @@
-cmake_minimum_required(VERSION 3.5...3.20)
-project(AssemblyStudy CXX)
-
-
-set(DEPENDENCIES benchmark::benchmark)
+cmake_minimum_required(VERSION 3.18)
+project(AssemblyStudy LANGUAGES CXX)
 
 add_executable(swap swap.cpp)
-target_link_libraries(swap PRIVATE ${DEPENDENCIES})
+target_link_libraries(swap PRIVATE benchmark::benchmark)

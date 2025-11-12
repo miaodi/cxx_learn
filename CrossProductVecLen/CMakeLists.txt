@@ -1,37 +1,82 @@
-cmake_minimum_required(VERSION 3.5...3.20)
-project(CrossProductVecLen CXX)
-
-set(ElementWiseProductBench_SRC ElementWiseProductBench.cpp)
-
-
-set(DEPENDENCIES benchmark::benchmark GTest::gtest_main GTest::gmock_main  OpenMP::OpenMP_CXX VectorOps)
+cmake_minimum_required(VERSION 3.18)
+project(CrossProductVecLen LANGUAGES CXX)
 
 # Only build executables if AVX2 is supported
-if(AVX2_CPU_SUPPORTS)
-    message(STATUS "AVX2 is supported - building CrossProductVecLen executables")
-    add_library(VectorOps STATIC
-      VectorOps.cpp
-    )
-    
-    add_executable(ElementWiseProductBench ${ElementWiseProductBench_SRC})
-    # set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME ${ONE_BENCH_EXEC}) 
-    target_link_libraries(ElementWiseProductBench PRIVATE ${DEPENDENCIES})
-
-    set(CrossProductLenBench_SRC CrossProductLenBench.cpp)
-    add_executable(CrossProductLenBench ${CrossProductLenBench_SRC})
-    target_link_libraries(CrossProductLenBench PRIVATE ${DEPENDENCIES})
-
-    set(VectorOpsBench_SRC VectorOpsBench.cpp)
-    add_executable(VectorOpsBench ${VectorOpsBench_SRC})
-    target_link_libraries(VectorOpsBench PRIVATE ${DEPENDENCIES})
-
-    set(fmaBench_SRC fmaBench.cpp)
-    add_executable(fmaBench ${fmaBench_SRC})
-    target_link_libraries(fmaBench PRIVATE ${DEPENDENCIES})
-
-    set(TEST_SRC test.cpp)
-    add_executable(tests ${TEST_SRC})
-    target_link_libraries(tests PRIVATE ${DEPENDENCIES})
-else()
-    message(WARNING "AVX2 is not supported - skipping CrossProductVecLen executables")
+if(NOT AVX2_CPU_SUPPORTS)
+  message(WARNING "AVX2 is not supported - skipping CrossProductVecLen executables")
+  return()
 endif()
+
+message(STATUS "AVX2 is supported - building CrossProductVecLen executables")
+
+# ============================================================================
+# Library
+# ============================================================================
+
+add_library(VectorOps STATIC VectorOps.cpp)
+target_include_directories(VectorOps PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Enable SIMD optimizations
+if(COMMAND target_enable_simd)
+  target_enable_simd(VectorOps)
+endif()
+
+# ============================================================================
+# Benchmark Executables
+# ============================================================================
+
+# ElementWiseProductBench
+add_executable(ElementWiseProductBench ElementWiseProductBench.cpp)
+target_link_libraries(ElementWiseProductBench PRIVATE
+  benchmark::benchmark
+  GTest::gtest_main
+  GTest::gmock_main
+  OpenMP::OpenMP_CXX
+  VectorOps
+)
+
+# CrossProductLenBench
+add_executable(CrossProductLenBench CrossProductLenBench.cpp)
+target_link_libraries(CrossProductLenBench PRIVATE
+  benchmark::benchmark
+  GTest::gtest_main
+  GTest::gmock_main
+  OpenMP::OpenMP_CXX
+  VectorOps
+)
+
+# VectorOpsBench
+add_executable(VectorOpsBench VectorOpsBench.cpp)
+target_link_libraries(VectorOpsBench PRIVATE
+  benchmark::benchmark
+  GTest::gtest_main
+  GTest::gmock_main
+  OpenMP::OpenMP_CXX
+  VectorOps
+)
+
+# fmaBench
+add_executable(fmaBench fmaBench.cpp)
+target_link_libraries(fmaBench PRIVATE
+  benchmark::benchmark
+  GTest::gtest_main
+  GTest::gmock_main
+  OpenMP::OpenMP_CXX
+  VectorOps
+)
+
+# ============================================================================
+# Test Executable
+# ============================================================================
+
+add_executable(CrossProductVecLen_tests test.cpp)
+target_link_libraries(CrossProductVecLen_tests PRIVATE
+  GTest::gtest_main
+  GTest::gmock_main
+  OpenMP::OpenMP_CXX
+  VectorOps
+)
+
+# Enable testing
+enable_testing()
+add_test(NAME CrossProductVecLen_tests COMMAND CrossProductVecLen_tests)

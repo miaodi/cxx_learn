@@ -1,13 +1,35 @@
-cmake_minimum_required(VERSION 3.5...3.20)
-project(GEMM CXX)
-set(SRC bench.cpp)
+cmake_minimum_required(VERSION 3.18)
+project(GEMM LANGUAGES CXX)
 
-set(DEPENDENCIES benchmark::benchmark GTest::gtest_main )
+# ============================================================================
+# Benchmark Executable
+# ============================================================================
 
-add_executable(GEMM_bench ${SRC})
-# set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME ${ONE_BENCH_EXEC}) 
-target_link_libraries(GEMM_bench PRIVATE ${DEPENDENCIES})
+add_executable(GEMM_bench bench.cpp)
+target_link_libraries(GEMM_bench PRIVATE 
+  benchmark::benchmark
+  GTest::gtest_main
+)
 
-set(TEST_SRC test.cpp)
-add_executable(GEMM_test ${TEST_SRC})
-target_link_libraries(GEMM_test PRIVATE ${DEPENDENCIES})
+# Enable SIMD optimizations
+if(COMMAND target_enable_simd)
+  target_enable_simd(GEMM_bench)
+endif()
+
+# ============================================================================
+# Test Executable
+# ============================================================================
+
+add_executable(GEMM_test test.cpp)
+target_link_libraries(GEMM_test PRIVATE 
+  GTest::gtest_main
+)
+
+# Enable SIMD optimizations
+if(COMMAND target_enable_simd)
+  target_enable_simd(GEMM_test)
+endif()
+
+# Enable testing
+enable_testing()
+add_test(NAME GEMM_test COMMAND GEMM_test)
