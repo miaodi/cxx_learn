@@ -21,6 +21,11 @@
 #include <string>
 #include <vector>
 
+#ifdef ENABLE_NVTX
+#include <nvtx3/nvToolsExt.h>
+#endif
+
+
 #define CUDA_CHECK(call)                                                     \
   do {                                                                       \
     cudaError_t err__ = (call);                                              \
@@ -113,11 +118,18 @@ static void BM_GlobalMemoryStride(benchmark::State &state) {
 
   // Benchmark loop
   for (auto _ : state) {
+#ifdef ENABLE_NVTX
+    nvtxRangePush("StrideReadKernel");
+#endif
     CUDA_CHECK(cudaMemset(device_sink, 0, sink_bytes));
-    stride_read_kernel<<<kGridSize, kBlockSize>>>(
-        device_data, device_sink, kDataElements, stride, iterations_per_thread);
+    stride_read_kernel<<<kGridSize, kBlockSize>>>(device_data, device_sink,
+                                                  kDataElements, stride,
+                                                  iterations_per_thread);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
+#ifdef ENABLE_NVTX
+    nvtxRangePop();
+#endif
   }
 
   CUDA_CHECK(cudaFree(device_data));

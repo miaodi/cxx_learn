@@ -7,6 +7,40 @@ endif()
 project(cuda LANGUAGES CXX CUDA)
 
 # ============================================================================
+# Find NVTX3
+# ============================================================================
+
+# Try to find NVTX3 headers (comes with CUDA Toolkit)
+find_path(NVTX3_INCLUDE_DIR
+  NAMES nvtx3/nvToolsExt.h nvtx3/nvToolsExtCuda.h
+  PATHS
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+    /usr/local/cuda/include
+    /opt/cuda/include
+    /usr/local/cuda/targets/x86_64-linux/include
+    /usr/local/cuda/targets/x86_64-linux/include/nvtx3/
+)
+
+if(NVTX3_INCLUDE_DIR)
+  message(STATUS "Found NVTX3 headers: ${NVTX3_INCLUDE_DIR}")
+  add_library(nvtx3 INTERFACE)
+  target_include_directories(nvtx3 INTERFACE ${NVTX3_INCLUDE_DIR})
+  # Link NVTX library (libnvToolsExt.so)
+  find_library(NVTX3_LIBRARY
+    NAMES nvToolsExt
+    PATHS
+      ${CMAKE_CUDA_TOOLKIT_LIBRARY_ROOT}
+      /usr/local/cuda/lib64
+      /opt/cuda/lib64
+  )
+  if(NVTX3_LIBRARY)
+    target_link_libraries(nvtx3 INTERFACE ${NVTX3_LIBRARY})
+  endif()
+else()
+  message(WARNING "NVTX3 headers not found. Some profiling features may be disabled.")
+endif()
+
+# ============================================================================
 # Permutation Benchmarks
 # ============================================================================
 
@@ -58,6 +92,10 @@ target_link_libraries(memory_stride_bench PRIVATE
   CUDA::cudart
   benchmark::benchmark
 )
+if(TARGET nvtx3)
+  target_link_libraries(memory_stride_bench PRIVATE nvtx3)
+  target_compile_definitions(memory_stride_bench PRIVATE ENABLE_NVTX)
+endif()
 set_target_properties(memory_stride_bench PROPERTIES
   CXX_STANDARD 17
   CXX_STANDARD_REQUIRED ON
