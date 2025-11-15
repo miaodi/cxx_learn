@@ -102,6 +102,20 @@ set_target_properties(memory_stride_bench PROPERTIES
 )
 
 # ============================================================================
+# Bank conflict benchmark
+# ============================================================================
+
+add_executable(bank_conflict_bench bank_conflict_bench.cu)
+target_link_libraries(bank_conflict_bench PRIVATE
+  CUDA::cudart
+  benchmark::benchmark
+)
+set_target_properties(bank_conflict_bench PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON
+)
+
+# ============================================================================
 # Gram-Schmidt Orthogonalization
 # ============================================================================
 
