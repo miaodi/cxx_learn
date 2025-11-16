@@ -5,7 +5,7 @@ if(USE_CUDA)
     set(DEPENDENCIES benchmark::benchmark CUDA::cudart OpenMP::OpenMP_CXX GTest::gtest_main)
 
     # Add library with proper CUDA compilation
-    add_library(PMPP vector_add.cu vector_add.h gemm.cu gemm.h)
+    add_library(PMPP vector_add.cu vector_add.h gemm.cu gemm.h convolution.cu convolution.h)
     target_link_libraries(PMPP PRIVATE ${DEPENDENCIES})
     target_compile_features(PMPP PRIVATE cxx_std_17)
     set_property(TARGET PMPP PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON)
