@@ -471,9 +471,7 @@ BENCHMARK_DEFINE_F(ConvolutionBenchmark, GPU_GlobalMem)(benchmark::State &state)
     convolution_2d_gpu(input.data(), output.data(), kernel.data(), width, height, kernel_size);
     benchmark::DoNotOptimize(output.data());
   }
-
-  // Calculate throughput
-  int64_t ops_per_iteration = static_cast<int64_t>(width) * height * kernel_size * kernel_size * 2; // multiply + add
+  int64_t ops_per_iteration = static_cast<int64_t>(width) * height * kernel_size * kernel_size * 2;
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * ops_per_iteration);
   state.counters["pixels"] = width * height;
   state.counters["kernel_size"] = kernel_size;
@@ -484,9 +482,18 @@ BENCHMARK_DEFINE_F(ConvolutionBenchmark, GPU_ConstMem)(benchmark::State &state) 
     convolution_2d_gpu_constmem(input.data(), output.data(), kernel.data(), width, height, kernel_size);
     benchmark::DoNotOptimize(output.data());
   }
+  int64_t ops_per_iteration = static_cast<int64_t>(width) * height * kernel_size * kernel_size * 2;
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * ops_per_iteration);
+  state.counters["pixels"] = width * height;
+  state.counters["kernel_size"] = kernel_size;
+}
 
-  // Calculate throughput
-  int64_t ops_per_iteration = static_cast<int64_t>(width) * height * kernel_size * kernel_size * 2; // multiply + add
+BENCHMARK_DEFINE_F(ConvolutionBenchmark, GPU_ConstSharedMem)(benchmark::State &state) {
+  for (auto _ : state) {
+    convolution_2d_gpu_const_shared(input.data(), output.data(), kernel.data(), width, height, kernel_size);
+    benchmark::DoNotOptimize(output.data());
+  }
+  int64_t ops_per_iteration = static_cast<int64_t>(width) * height * kernel_size * kernel_size * 2;
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * ops_per_iteration);
   state.counters["pixels"] = width * height;
   state.counters["kernel_size"] = kernel_size;
@@ -519,6 +526,14 @@ BENCHMARK_REGISTER_F(ConvolutionBenchmark, GPU_ConstMem)
     ->Args({512, 512, 9})
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
+BENCHMARK_REGISTER_F(ConvolutionBenchmark, GPU_ConstSharedMem)
+  ->Name("Convolution/GPU_ConstSharedMem/Small")
+  ->Args({512, 512, 3})
+  ->Args({512, 512, 5})
+  ->Args({512, 512, 7})
+  ->Args({512, 512, 9})
+  ->Unit(benchmark::kMillisecond)
+  ->UseRealTime();
 
 // Medium images
 BENCHMARK_REGISTER_F(ConvolutionBenchmark, CPU)
@@ -544,6 +559,13 @@ BENCHMARK_REGISTER_F(ConvolutionBenchmark, GPU_ConstMem)
     ->Args({1024, 1024, 7})
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
+BENCHMARK_REGISTER_F(ConvolutionBenchmark, GPU_ConstSharedMem)
+  ->Name("Convolution/GPU_ConstSharedMem/Medium")
+  ->Args({1024, 1024, 3})
+  ->Args({1024, 1024, 5})
+  ->Args({1024, 1024, 7})
+  ->Unit(benchmark::kMillisecond)
+  ->UseRealTime();
 
 // Large images
 BENCHMARK_REGISTER_F(ConvolutionBenchmark, CPU)
@@ -569,5 +591,12 @@ BENCHMARK_REGISTER_F(ConvolutionBenchmark, GPU_ConstMem)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime()
     ->Iterations(5);
+BENCHMARK_REGISTER_F(ConvolutionBenchmark, GPU_ConstSharedMem)
+  ->Name("Convolution/GPU_ConstSharedMem/Large")
+  ->Args({2048, 2048, 5})
+  ->Args({4096, 4096, 5})
+  ->Unit(benchmark::kMillisecond)
+  ->UseRealTime()
+  ->Iterations(5);
 
 BENCHMARK_MAIN();
