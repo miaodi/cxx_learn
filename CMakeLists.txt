@@ -190,7 +190,8 @@ include_directories(${CMAKE_BINARY_DIR})
 # ============================================================================
         
 macro(SUBDIRLIST result curdir)
-  file(GLOB children RELATIVE ${curdir} ${curdir}/*)
+  # CONFIGURE_DEPENDS makes CMake check for new directories at build time
+  file(GLOB children CONFIGURE_DEPENDS RELATIVE ${curdir} ${curdir}/*)
   set(dirlist "")
   foreach(child ${children})
     if(IS_DIRECTORY ${curdir}/${child})
