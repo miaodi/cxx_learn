@@ -7,6 +7,7 @@
 #include <vector>
 #include "gemm.h"
 #include "convolution.h"
+#include "reduction.h"
 
 // ------------------------------ Convolution Tests ------------------------------
 class ConvolutionTest : public ::testing::Test {
@@ -632,6 +633,265 @@ TEST_F(GEMMTest, DISABLED_LargeMatrices) {
         }
     }
     EXPECT_TRUE(has_nonzero);
+}
+
+// ------------------------------ Reduction Tests ------------------------------
+class ReductionTest : public ::testing::Test {
+protected:
+  void SetUp() override {
+    rng.seed(2025);
+    dist = std::uniform_real_distribution<float>(-10.0f, 10.0f);
+  }
+
+  void generateRandomArray(std::vector<float> &arr, int size) {
+    arr.resize(size);
+    for (int i = 0; i < size; ++i) arr[i] = dist(rng);
+  }
+
+  float cpuReduction(const std::vector<float> &arr) {
+    float sum = 0.0f;
+    for (float val : arr) sum += val;
+    return sum;
+  }
+
+  std::mt19937 rng;
+  std::uniform_real_distribution<float> dist;
+};
+
+// Test with a small array
+TEST_F(ReductionTest, SmallArray) {
+  const int size = 100;
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = simple_reduction(input.data(), size);
+  
+  EXPECT_NEAR(cpu_result, gpu_result, 1e-3f) 
+    << "Reduction mismatch for size " << size;
+}
+
+// Test with array size equal to block size
+TEST_F(ReductionTest, SingleBlockSize) {
+  const int size = 256;
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = simple_reduction(input.data(), size);
+  
+  EXPECT_NEAR(cpu_result, gpu_result, 1e-3f) 
+    << "Reduction mismatch for size " << size;
+}
+
+// Test with medium array
+TEST_F(ReductionTest, MediumArray) {
+  const int size = 4096;
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = simple_reduction(input.data(), size);
+  
+  EXPECT_NEAR(cpu_result, gpu_result, 1e-2f) 
+    << "Reduction mismatch for size " << size;
+}
+
+// Test with large array
+TEST_F(ReductionTest, LargeArray) {
+  const int size = 1 << 20; // 1M elements
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = simple_reduction(input.data(), size);
+  
+  float relative_error = std::abs(cpu_result - gpu_result) / std::abs(cpu_result);
+  EXPECT_LT(relative_error, 1e-3f)  // Relaxed tolerance for large arrays due to floating-point accumulation
+    << "Reduction mismatch for size " << size 
+    << " (CPU: " << cpu_result << ", GPU: " << gpu_result << ")";
+}
+
+// Test with non-power-of-2 size
+TEST_F(ReductionTest, NonPowerOfTwoSize) {
+  const int size = 12345;
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = simple_reduction(input.data(), size);
+  
+  EXPECT_NEAR(cpu_result, gpu_result, 1e-2f) 
+    << "Reduction mismatch for size " << size;
+}
+
+// Test with all zeros
+TEST_F(ReductionTest, AllZeros) {
+  const int size = 1000;
+  std::vector<float> input(size, 0.0f);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = simple_reduction(input.data(), size);
+  
+  EXPECT_FLOAT_EQ(cpu_result, gpu_result);
+  EXPECT_FLOAT_EQ(0.0f, gpu_result);
+}
+
+// Test with all ones
+TEST_F(ReductionTest, AllOnes) {
+  const int size = 1000;
+  std::vector<float> input(size, 1.0f);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = simple_reduction(input.data(), size);
+  
+  EXPECT_NEAR(cpu_result, gpu_result, 1e-3f);
+  EXPECT_NEAR(static_cast<float>(size), gpu_result, 1e-3f);
+}
+
+// Test with alternating positive and negative values
+TEST_F(ReductionTest, AlternatingValues) {
+  const int size = 10000;
+  std::vector<float> input(size);
+  for (int i = 0; i < size; ++i) {
+    input[i] = (i % 2 == 0) ? 1.0f : -1.0f;
+  }
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = simple_reduction(input.data(), size);
+  
+  EXPECT_NEAR(cpu_result, gpu_result, 1e-3f);
+  EXPECT_FLOAT_EQ(0.0f, cpu_result); // Should sum to 0
+}
+
+// Test Thrust reduction
+TEST_F(ReductionTest, ThrustReduction) {
+  const int size = 10000;
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float thrust_result = thrust_reduction(input.data(), size);
+  
+  EXPECT_NEAR(cpu_result, thrust_result, 1e-3f)
+    << "Thrust reduction mismatch";
+}
+
+// ------------------------------ Coarsened Reduction Tests ------------------------------
+class CoarsenedReductionTest : public ::testing::Test {
+protected:
+  void SetUp() override {
+    rng.seed(2026);
+    dist = std::uniform_real_distribution<float>(-10.0f, 10.0f);
+  }
+
+  void generateRandomArray(std::vector<float> &arr, int size) {
+    arr.resize(size);
+    for (int i = 0; i < size; ++i) arr[i] = dist(rng);
+  }
+
+  float cpuReduction(const std::vector<float> &arr) {
+    float sum = 0.0f;
+    for (float val : arr) sum += val;
+    return sum;
+  }
+
+  std::mt19937 rng;
+  std::uniform_real_distribution<float> dist;
+};
+
+// Test coarsened reduction with small array (auto coarsening factor)
+TEST_F(CoarsenedReductionTest, SmallArray) {
+  const int size = 1000;
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = coarsened_reduction(input.data(), size);
+  
+  EXPECT_NEAR(cpu_result, gpu_result, 1e-2f) 
+    << "Coarsened reduction mismatch for small array";
+}
+
+// Test coarsened reduction with medium array
+TEST_F(CoarsenedReductionTest, MediumArray) {
+  const int size = 8192;
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = coarsened_reduction(input.data(), size);
+  
+  EXPECT_NEAR(cpu_result, gpu_result, 1e-2f) 
+    << "Coarsened reduction mismatch for medium array";
+}
+
+// Test coarsened reduction with larger array
+TEST_F(CoarsenedReductionTest, LargerArray) {
+  const int size = 65536;
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = coarsened_reduction(input.data(), size);
+  
+  EXPECT_NEAR(cpu_result, gpu_result, 1e-2f) 
+    << "Coarsened reduction mismatch for larger array";
+}
+
+// Test large array with coarsening
+TEST_F(CoarsenedReductionTest, LargeArrayCoarsened) {
+  const int size = 1 << 20; // 1M elements
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = coarsened_reduction(input.data(), size);
+  
+  float relative_error = std::abs(cpu_result - gpu_result) / std::abs(cpu_result);
+  EXPECT_LT(relative_error, 1e-3f) 
+    << "Coarsened reduction mismatch for large array (CPU: " 
+    << cpu_result << ", GPU: " << gpu_result << ")";
+}
+
+// Test very large array (should use high coarsening factor automatically)
+TEST_F(CoarsenedReductionTest, VeryLargeArray) {
+  const int size = 1 << 24; // 16M elements
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = coarsened_reduction(input.data(), size);
+  
+  float relative_error = std::abs(cpu_result - gpu_result) / std::abs(cpu_result);
+  EXPECT_LT(relative_error, 2e-3f)  // Relaxed tolerance for very large arrays
+    << "Coarsened reduction mismatch for very large array";
+}
+
+// Test non-power-of-2 size with coarsening
+TEST_F(CoarsenedReductionTest, NonPowerOfTwoCoarsened) {
+  const int size = 12345;
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float cpu_result = cpuReduction(input);
+  float gpu_result = coarsened_reduction(input.data(), size);
+  
+  EXPECT_NEAR(cpu_result, gpu_result, 1e-2f) 
+    << "Coarsened reduction mismatch for non-power-of-2 size";
+}
+
+// Compare simple vs coarsened reduction
+TEST_F(CoarsenedReductionTest, CompareSimpleVsCoarsened) {
+  const int size = 10000;
+  std::vector<float> input;
+  generateRandomArray(input, size);
+  
+  float simple_result = simple_reduction(input.data(), size);
+  float coarsened_result = coarsened_reduction(input.data(), size);
+  
+  EXPECT_NEAR(simple_result, coarsened_result, 1e-2f) 
+    << "Simple and coarsened reduction should produce similar results";
 }
 
 int main(int argc, char **argv) {

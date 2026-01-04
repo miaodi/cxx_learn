@@ -1,7 +1,9 @@
 #include "convolution.h"
 #include "gemm.h"
+#include "reduction.h"
 #include "vector_add.h"
 #include <benchmark/benchmark.h>
+#include <numeric>
 #include <random>
 #include <vector>
 
@@ -598,5 +600,110 @@ BENCHMARK_REGISTER_F(ConvolutionBenchmark, GPU_ConstSharedMem)
   ->Unit(benchmark::kMillisecond)
   ->UseRealTime()
   ->Iterations(5);
+
+// Reduction Benchmarks
+class ReductionBenchmark : public benchmark::Fixture {
+public:
+  void SetUp(const ::benchmark::State &state) override {
+    size_t N = state.range(0);
+    input.resize(N);
+
+    // Initialize with random data
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<float> dist(0.0f, 10.0f);
+
+    for (size_t i = 0; i < N; ++i) {
+      input[i] = dist(rng);
+    }
+  }
+
+  void TearDown([[maybe_unused]] const ::benchmark::State &state) override {
+    // Cleanup if needed
+  }
+
+protected:
+  std::vector<float> input;
+};
+
+BENCHMARK_DEFINE_F(ReductionBenchmark, CPU)(benchmark::State &state) {
+  size_t N = state.range(0);
+  float result = 0.0f;
+
+  for (auto _ : state) {
+    result = std::accumulate(input.begin(), input.end(), 0.0f);
+    benchmark::DoNotOptimize(result);
+  }
+
+  // Calculate throughput
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * N *
+                          sizeof(float));
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * N);
+}
+
+BENCHMARK_DEFINE_F(ReductionBenchmark, GPU)(benchmark::State &state) {
+  size_t N = state.range(0);
+  float result = 0.0f;
+
+  for (auto _ : state) {
+    result = simple_reduction(input.data(), N);
+    benchmark::DoNotOptimize(result);
+  }
+
+  // Calculate throughput
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * N *
+                          sizeof(float));
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * N);
+}
+
+BENCHMARK_DEFINE_F(ReductionBenchmark, GPU_Coarsened)(benchmark::State &state) {
+  size_t N = state.range(0);
+  float result = 0.0f;
+
+  for (auto _ : state) {
+    result = coarsened_reduction(input.data(), N);
+    benchmark::DoNotOptimize(result);
+  }
+
+  // Calculate throughput
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * N *
+                          sizeof(float));
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * N);
+}
+
+BENCHMARK_DEFINE_F(ReductionBenchmark, GPU_Thrust)(benchmark::State &state) {
+  size_t N = state.range(0);
+  float result = 0.0f;
+
+  for (auto _ : state) {
+    result = thrust_reduction(input.data(), N);
+    benchmark::DoNotOptimize(result);
+  }
+
+  // Calculate throughput
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * N *
+                          sizeof(float));
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * N);
+}
+
+// Register benchmarks for different array sizes
+BENCHMARK_REGISTER_F(ReductionBenchmark, CPU)
+    ->Range(1024, 1024 * 1024 * 16) // 1K to 16M elements
+    ->Unit(benchmark::kMicrosecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(ReductionBenchmark, GPU)
+    ->Range(1024, 1024 * 1024 * 16) // 1K to 16M elements
+    ->Unit(benchmark::kMicrosecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(ReductionBenchmark, GPU_Coarsened)
+    ->Range(1024, 1024 * 1024 * 16) // 1K to 16M elements
+    ->Unit(benchmark::kMicrosecond)
+    ->UseRealTime();
+
+BENCHMARK_REGISTER_F(ReductionBenchmark, GPU_Thrust)
+    ->Range(1024, 1024 * 1024 * 16) // 1K to 16M elements
+    ->Unit(benchmark::kMicrosecond)
+    ->UseRealTime();
 
 BENCHMARK_MAIN();
