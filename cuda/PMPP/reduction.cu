@@ -10,15 +10,18 @@ __global__ void simple_reduction_kernel(const float *input, float *output,
   int tid = threadIdx.x;
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-  // Load input into shared memory
-  if (idx < size)
-    shared_data[tid] = input[idx];
-  else
-    shared_data[tid] = 0.0f; // Handle out-of-bounds
+  // Load input into shared memory and perform first reduction step
+  float value = (idx < size) ? input[idx] : 0.0f;
+  int idx2 = idx + blockDim.x / 2;
+  if (idx2 < size) {
+    value += input[idx2];
+  }
+  shared_data[tid] = value;
   __syncthreads();
 
-  // Perform reduction in shared memory
-  for (int stride = blockDim.x / 2; stride > 0; stride /= 2) {
+  // Perform reduction in shared memory (one less iteration needed)
+#pragma unroll (16)
+  for (int stride = blockDim.x / 4; stride > 0; stride /= 2) {
     if (tid < stride) {
       shared_data[tid] += shared_data[tid + stride];
     }
@@ -68,6 +71,7 @@ __global__ void coarsened_reduction_kernel(const float *input, float *output,
   
   // Each thread processes multiple elements (coarsening)
   float sum = 0.0f;
+#pragma unroll (16)
   for (int i = 0; i < coarseningFactor; ++i) {
     int idx = blockStart + i * blockDim.x + tid;
     if (idx < size) {

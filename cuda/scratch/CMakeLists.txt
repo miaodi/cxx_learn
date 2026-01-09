@@ -13,4 +13,16 @@ if(USE_CUDA)
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
     )
+    
+    # CUB practice executable
+    add_executable(cub_practice cub_practice.cu)
+    target_compile_features(cub_practice PRIVATE cxx_std_17)
+    target_link_libraries(cub_practice PRIVATE CUDA::cudart)
+    target_compile_options(cub_practice PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>)
+    
+    # Set CUDA flags for better debugging
+    set_target_properties(cub_practice PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+    )
 endif(USE_CUDA)

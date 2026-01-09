@@ -116,6 +116,21 @@ set_target_properties(bank_conflict_bench PROPERTIES
 )
 
 # ============================================================================
+# Graph Transpose Benchmark
+# ============================================================================
+
+add_executable(graph_transpose_bench graph_transpose_bench.cu graph_transpose.cu)
+target_include_directories(graph_transpose_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(graph_transpose_bench PRIVATE
+  CUDA::cudart
+  benchmark::benchmark
+)
+set_target_properties(graph_transpose_bench PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON
+)
+
+# ============================================================================
 # Gram-Schmidt Orthogonalization
 # ============================================================================
 
