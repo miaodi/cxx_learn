@@ -236,10 +236,92 @@ static void BM_GraphTranspose_GPU_NoCOO(benchmark::State& state) {
     BM_GraphTranspose_GPU(state, false);
 }
 
+static void BM_GraphTranspose_GPU_KVSort(benchmark::State& state) {
+    if (!ensure_graph_loaded(state)) {
+        return;
+    }
+
+    int* d_row_offsets = nullptr;
+    int* d_col_indices = nullptr;
+    int* d_out_row_offsets = nullptr;
+    int* d_out_col_indices = nullptr;
+
+    cudaError_t status = cudaMalloc(&d_row_offsets,
+                                    (g_graph.num_rows + 1) * sizeof(int));
+    if (status != cudaSuccess) {
+        state.SkipWithError(cudaGetErrorString(status));
+        return;
+    }
+    status = cudaMalloc(&d_col_indices, g_graph.num_edges * sizeof(int));
+    if (status != cudaSuccess) {
+        cudaFree(d_row_offsets);
+        state.SkipWithError(cudaGetErrorString(status));
+        return;
+    }
+    status = cudaMalloc(&d_out_row_offsets,
+                        (g_graph.num_cols + 1) * sizeof(int));
+    if (status != cudaSuccess) {
+        cudaFree(d_row_offsets);
+        cudaFree(d_col_indices);
+        state.SkipWithError(cudaGetErrorString(status));
+        return;
+    }
+    status = cudaMalloc(&d_out_col_indices, g_graph.num_edges * sizeof(int));
+    if (status != cudaSuccess) {
+        cudaFree(d_row_offsets);
+        cudaFree(d_col_indices);
+        cudaFree(d_out_row_offsets);
+        state.SkipWithError(cudaGetErrorString(status));
+        return;
+    }
+
+    status = cudaMemcpy(d_row_offsets,
+                        g_graph.row_offsets.data(),
+                        (g_graph.num_rows + 1) * sizeof(int),
+                        cudaMemcpyHostToDevice);
+    if (status != cudaSuccess) {
+        state.SkipWithError(cudaGetErrorString(status));
+        goto gpu_cleanup;
+    }
+
+    status = cudaMemcpy(d_col_indices,
+                        g_graph.col_indices.data(),
+                        g_graph.num_edges * sizeof(int),
+                        cudaMemcpyHostToDevice);
+    if (status != cudaSuccess) {
+        state.SkipWithError(cudaGetErrorString(status));
+        goto gpu_cleanup;
+    }
+
+    for (auto _ : state) {
+        status = graph_transpose::transpose_csr_gpu_kv_sort(
+            d_row_offsets,
+            d_col_indices,
+            g_graph.num_rows,
+            g_graph.num_cols,
+            g_graph.num_edges,
+            d_out_row_offsets,
+            d_out_col_indices);
+        if (status != cudaSuccess) {
+            state.SkipWithError(cudaGetErrorString(status));
+            break;
+        }
+    }
+
+    set_common_metrics(state);
+
+gpu_cleanup:
+    cudaFree(d_row_offsets);
+    cudaFree(d_col_indices);
+    cudaFree(d_out_row_offsets);
+    cudaFree(d_out_col_indices);
+}
+
 BENCHMARK(BM_GraphTranspose_CPU)->Unit(benchmark::kMillisecond)->UseRealTime();
 BENCHMARK(BM_GraphTranspose_GPU_COO)->Unit(benchmark::kMillisecond)->UseRealTime();
 BENCHMARK(BM_GraphTranspose_GPU_NoCOO)->Unit(benchmark::kMillisecond)->UseRealTime();
 BENCHMARK(BM_GraphTranspose_GPU_GlobalSort)->Unit(benchmark::kMillisecond)->UseRealTime();
+BENCHMARK(BM_GraphTranspose_GPU_KVSort)->Unit(benchmark::kMillisecond)->UseRealTime();
 
 int main(int argc, char** argv) {
     std::string mtx_path;

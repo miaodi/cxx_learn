@@ -7,38 +7,78 @@ endif()
 project(cuda LANGUAGES CXX CUDA)
 
 # ============================================================================
-# Find NVTX3
+# Find cuBLAS manually (NVIDIA HPC SDK has it in math_libs)
 # ============================================================================
 
-# Try to find NVTX3 headers (comes with CUDA Toolkit)
-find_path(NVTX3_INCLUDE_DIR
-  NAMES nvtx3/nvToolsExt.h nvtx3/nvToolsExtCuda.h
+find_library(CUBLAS_LIBRARY
+  NAMES cublas
   PATHS
-    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
-    /usr/local/cuda/include
-    /opt/cuda/include
-    /usr/local/cuda/targets/x86_64-linux/include
-    /usr/local/cuda/targets/x86_64-linux/include/nvtx3/
+    $ENV{NVHPC_MATH_LIBS}/lib64
+    $ENV{CUDA_HOME}/lib64
+    $ENV{CUDA_ROOT}/lib64
+    ${CMAKE_CUDA_TOOLKIT_LIBRARY_ROOT}
+  NO_DEFAULT_PATH
 )
 
-if(NVTX3_INCLUDE_DIR)
-  message(STATUS "Found NVTX3 headers: ${NVTX3_INCLUDE_DIR}")
-  add_library(nvtx3 INTERFACE)
-  target_include_directories(nvtx3 INTERFACE ${NVTX3_INCLUDE_DIR})
-  # Link NVTX library (libnvToolsExt.so)
-  find_library(NVTX3_LIBRARY
-    NAMES nvToolsExt
-    PATHS
-      ${CMAKE_CUDA_TOOLKIT_LIBRARY_ROOT}
-      /usr/local/cuda/lib64
-      /opt/cuda/lib64
-  )
-  if(NVTX3_LIBRARY)
-    target_link_libraries(nvtx3 INTERFACE ${NVTX3_LIBRARY})
+if(CUBLAS_LIBRARY)
+  message(STATUS "Found cuBLAS: ${CUBLAS_LIBRARY}")
+  add_library(cublas_compat INTERFACE)
+  target_link_libraries(cublas_compat INTERFACE ${CUBLAS_LIBRARY})
+  # Create an alias so we can use CUDA::cublas or cublas_compat interchangeably
+  if(NOT TARGET CUDA::cublas)
+    add_library(CUDA::cublas ALIAS cublas_compat)
   endif()
 else()
-  message(WARNING "NVTX3 headers not found. Some profiling features may be disabled.")
+  message(WARNING "cuBLAS library not found. Some targets may fail to build.")
 endif()
+
+# ============================================================================
+# Find NVTX3 - DISABLED (optional profiling feature)
+# ============================================================================
+
+# # Try to find NVTX3 headers (NVIDIA HPC SDK has versioned subdirectories)
+# # Search in multiple possible locations including versioned paths
+# find_path(NVTX3_INCLUDE_DIR
+#   NAMES nvtx3/nvtx3.hpp cub/detail/nvtx3.hpp
+#   PATHS
+#     $ENV{CUDA_HOME}/targets/x86_64-linux/include
+#     $ENV{CUDA_ROOT}/targets/x86_64-linux/include
+#     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+#   NO_DEFAULT_PATH
+# )
+
+# # If not found, search in versioned subdirectories
+# if(NOT NVTX3_INCLUDE_DIR)
+#   file(GLOB CUDA_VERSION_DIRS 
+#     "$ENV{CUDA_HOME}/[0-9]*/targets/x86_64-linux/include"
+#     "$ENV{CUDA_ROOT}/[0-9]*/targets/x86_64-linux/include"
+#   )
+#   find_path(NVTX3_INCLUDE_DIR
+#     NAMES nvtx3/nvtx3.hpp cub/detail/nvtx3.hpp
+#     PATHS ${CUDA_VERSION_DIRS}
+#     NO_DEFAULT_PATH
+#   )
+# endif()
+
+# if(NVTX3_INCLUDE_DIR)
+#   message(STATUS "Found NVTX3 headers: ${NVTX3_INCLUDE_DIR}")
+#   add_library(nvtx3 INTERFACE)
+#   target_include_directories(nvtx3 INTERFACE ${NVTX3_INCLUDE_DIR})
+#   # Link NVTX library (libnvToolsExt.so)
+#   find_library(NVTX3_LIBRARY
+#     NAMES nvToolsExt
+#     PATHS
+#       $ENV{CUDA_HOME}/lib64
+#       $ENV{CUDA_ROOT}/lib64
+#       ${CMAKE_CUDA_TOOLKIT_LIBRARY_ROOT}
+#     NO_DEFAULT_PATH
+#   )
+#   if(NVTX3_LIBRARY)
+#     target_link_libraries(nvtx3 INTERFACE ${NVTX3_LIBRARY})
+#   endif()
+# else()
+#   message(WARNING "NVTX3 headers not found. Some profiling features may be disabled.")
+# endif()
 
 # ============================================================================
 # Permutation Benchmarks
@@ -116,7 +156,7 @@ set_target_properties(bank_conflict_bench PROPERTIES
 )
 
 # ============================================================================
-# Graph Transpose Benchmark
+# Graph Transpose Benchmark and Test
 # ============================================================================
 
 add_executable(graph_transpose_bench graph_transpose_bench.cu graph_transpose.cu)
@@ -129,6 +169,18 @@ set_target_properties(graph_transpose_bench PROPERTIES
   CXX_STANDARD 17
   CXX_STANDARD_REQUIRED ON
 )
+
+add_executable(graph_transpose_test graph_transpose_test.cu graph_transpose.cu)
+target_include_directories(graph_transpose_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(graph_transpose_test PRIVATE
+  CUDA::cudart
+  GTest::gtest_main
+)
+set_target_properties(graph_transpose_test PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON
+)
+add_test(NAME graph_transpose_test COMMAND graph_transpose_test)
 
 # ============================================================================
 # Gram-Schmidt Orthogonalization

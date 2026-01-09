@@ -453,4 +453,169 @@ cleanup:
     return status;
 }
 
+cudaError_t transpose_csr_gpu_kv_sort(const int* d_row_offsets,
+                                      const int* d_col_indices,
+                                      int num_src_vertices,
+                                      int num_dst_vertices,
+                                      int num_edges,
+                                      int* d_out_row_offsets,
+                                      int* d_out_col_indices,
+                                      cudaStream_t stream) {
+    if (num_src_vertices < 0 || num_dst_vertices < 0 || num_edges < 0) {
+        return cudaErrorInvalidValue;
+    }
+    if (num_src_vertices == 0 && num_edges > 0) {
+        return cudaErrorInvalidValue;
+    }
+    if (num_dst_vertices == 0) {
+        if (num_edges > 0) {
+            return cudaErrorInvalidValue;
+        }
+        CUDA_RETURN_IF_ERROR(
+            cudaMemsetAsync(d_out_row_offsets, 0, sizeof(int), stream));
+        return cudaSuccess;
+    }
+    if (num_edges == 0) {
+        CUDA_RETURN_IF_ERROR(
+            cudaMemsetAsync(d_out_row_offsets, 0,
+                            (num_dst_vertices + 1) * sizeof(int), stream));
+        return cudaSuccess;
+    }
+
+    int* d_counts = nullptr;
+    int* d_src_indices = nullptr;
+    int* d_dst_indices_copy = nullptr;
+    int* d_src_sorted = nullptr;
+    int* d_dst_sorted = nullptr;
+    void* d_temp_storage = nullptr;
+    size_t temp_storage_bytes = 0;
+    size_t sort_temp_storage_bytes = 0;
+    int edge_blocks = 0;
+    int row_blocks = 0;
+
+    cudaError_t status = cudaSuccess;
+    
+    // Allocate memory
+    status = cudaMalloc(&d_counts, num_dst_vertices * sizeof(int));
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+    status = cudaMalloc(&d_src_indices, num_edges * sizeof(int));
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+    status = cudaMalloc(&d_dst_indices_copy, num_edges * sizeof(int));
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+    status = cudaMalloc(&d_src_sorted, num_edges * sizeof(int));
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+    status = cudaMalloc(&d_dst_sorted, num_edges * sizeof(int));
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+
+    status = cudaMemsetAsync(d_counts, 0, num_dst_vertices * sizeof(int), stream);
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+    status = cudaMemsetAsync(d_out_row_offsets, 0, sizeof(int), stream);
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+
+    // Count in-degrees
+    edge_blocks = clamp_blocks((num_edges + kBlockSize - 1) / kBlockSize);
+    count_in_degrees_kernel<<<edge_blocks, kBlockSize, 0, stream>>>(
+        d_col_indices, num_edges, d_counts);
+    status = cudaGetLastError();
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+
+    // Build row offsets via inclusive scan
+    cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
+                                  d_counts, d_out_row_offsets + 1,
+                                  num_dst_vertices, stream);
+    status = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+    cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
+                                  d_counts, d_out_row_offsets + 1,
+                                  num_dst_vertices, stream);
+    status = cudaGetLastError();
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+
+    // Expand row indices to COO format (creates source array)
+    row_blocks = clamp_blocks(num_src_vertices);
+    expand_row_indices_kernel<<<row_blocks, kBlockSize, 0, stream>>>(
+        d_row_offsets, num_src_vertices, d_src_indices);
+    status = cudaGetLastError();
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+
+    // Copy destination indices (will be used as sort keys)
+    status = cudaMemcpyAsync(d_dst_indices_copy, d_col_indices,
+                             num_edges * sizeof(int),
+                             cudaMemcpyDeviceToDevice, stream);
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+
+    // Sort pairs: keys=destinations, values=sources
+    // This groups edges by destination and sorts sources within each group
+    sort_temp_storage_bytes = 0;
+    status = cub::DeviceRadixSort::SortPairs(
+        nullptr, sort_temp_storage_bytes,
+        d_dst_indices_copy, d_dst_sorted,
+        d_src_indices, d_src_sorted,
+        num_edges, 0, static_cast<int>(sizeof(int) * 8), stream);
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+    if (sort_temp_storage_bytes > temp_storage_bytes) {
+        cudaFree(d_temp_storage);
+        d_temp_storage = nullptr;
+        temp_storage_bytes = sort_temp_storage_bytes;
+        status = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+        if (status != cudaSuccess) {
+            goto cleanup;
+        }
+    }
+    status = cub::DeviceRadixSort::SortPairs(
+        d_temp_storage, sort_temp_storage_bytes,
+        d_dst_indices_copy, d_dst_sorted,
+        d_src_indices, d_src_sorted,
+        num_edges, 0, static_cast<int>(sizeof(int) * 8), stream);
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+
+    // Copy sorted sources to output (these are the new column indices)
+    status = cudaMemcpyAsync(d_out_col_indices, d_src_sorted,
+                             num_edges * sizeof(int),
+                             cudaMemcpyDeviceToDevice, stream);
+    if (status != cudaSuccess) {
+        goto cleanup;
+    }
+
+    status = cudaStreamSynchronize(stream);
+
+cleanup:
+    cudaFree(d_counts);
+    cudaFree(d_src_indices);
+    cudaFree(d_dst_indices_copy);
+    cudaFree(d_src_sorted);
+    cudaFree(d_dst_sorted);
+    cudaFree(d_temp_storage);
+
+    return status;
+}
+
 }  // namespace graph_transpose

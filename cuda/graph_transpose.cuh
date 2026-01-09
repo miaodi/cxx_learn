@@ -42,4 +42,16 @@ cudaError_t transpose_csr_gpu_global_sort(const int* d_row_offsets,
                                           int* d_out_col_indices,
                                           cudaStream_t stream = 0);
 
+// Transpose using key-value sort (simpler, no composite key packing).
+// Uses SortPairs with destinations as keys and sources as values.
+// More suitable for large vertex IDs or when composite keys won't fit.
+cudaError_t transpose_csr_gpu_kv_sort(const int* d_row_offsets,
+                                      const int* d_col_indices,
+                                      int num_src_vertices,
+                                      int num_dst_vertices,
+                                      int num_edges,
+                                      int* d_out_row_offsets,
+                                      int* d_out_col_indices,
+                                      cudaStream_t stream = 0);
+
 }  // namespace graph_transpose
