@@ -223,7 +223,7 @@ int get_shared_memory_size() {
 }
 
 template <MergeKernelType KernelType>
-void merge_impl(int *input1, int size1, int *input2, int size2, int *output) {
+void merge_impl_device(int *d_input1, int size1, int *d_input2, int size2, int *d_output) {
   int total = size1 + size2;
   if (total == 0) {
     return;
@@ -246,17 +246,46 @@ void merge_impl(int *input1, int size1, int *input2, int size2, int *output) {
     shared_mem_size = tile_size * 2 * sizeof(int);
   }
 
+  int *d_a_offsets = nullptr;
+  int *d_b_offsets = nullptr;
+
+  cudaMalloc(&d_a_offsets, (num_blocks + 1) * sizeof(int));
+  cudaMalloc(&d_b_offsets, (num_blocks + 1) * sizeof(int));
+
+  int partition_threads = 256;
+  int partition_blocks =
+      (num_blocks + 1 + partition_threads - 1) / partition_threads;
+  merge_path_partitions_kernel<<<partition_blocks, partition_threads>>>(
+      d_input1, size1, d_input2, size2, d_a_offsets, d_b_offsets, num_blocks);
+
+  if constexpr (KernelType == MergeKernelType::Simple) {
+    merge_partitions_kernel<<<num_blocks, block_size>>>(d_input1, d_input2, d_output,
+                                                        d_a_offsets, d_b_offsets);
+  } else if constexpr (KernelType == MergeKernelType::Shared) {
+    merge_partitions_kernel_shared<<<num_blocks, block_size, shared_mem_size>>>(
+        d_input1, d_input2, d_output, d_a_offsets, d_b_offsets, tile_size);
+  }
+
+  cudaDeviceSynchronize();
+
+  cudaFree(d_a_offsets);
+  cudaFree(d_b_offsets);
+}
+
+template <MergeKernelType KernelType>
+void merge_impl(int *input1, int size1, int *input2, int size2, int *output) {
+  int total = size1 + size2;
+  if (total == 0) {
+    return;
+  }
+
   int *d_a = nullptr;
   int *d_b = nullptr;
   int *d_c = nullptr;
-  int *d_a_offsets = nullptr;
-  int *d_b_offsets = nullptr;
 
   cudaMalloc(&d_a, size1 * sizeof(int));
   cudaMalloc(&d_b, size2 * sizeof(int));
   cudaMalloc(&d_c, total * sizeof(int));
-  cudaMalloc(&d_a_offsets, (num_blocks + 1) * sizeof(int));
-  cudaMalloc(&d_b_offsets, (num_blocks + 1) * sizeof(int));
 
   if (size1 > 0) {
     cudaMemcpy(d_a, input1, size1 * sizeof(int), cudaMemcpyHostToDevice);
@@ -265,28 +294,13 @@ void merge_impl(int *input1, int size1, int *input2, int size2, int *output) {
     cudaMemcpy(d_b, input2, size2 * sizeof(int), cudaMemcpyHostToDevice);
   }
 
-  int partition_threads = 256;
-  int partition_blocks =
-      (num_blocks + 1 + partition_threads - 1) / partition_threads;
-  merge_path_partitions_kernel<<<partition_blocks, partition_threads>>>(
-      d_a, size1, d_b, size2, d_a_offsets, d_b_offsets, num_blocks);
+  merge_impl_device<KernelType>(d_a, size1, d_b, size2, d_c);
 
-  if constexpr (KernelType == MergeKernelType::Simple) {
-    merge_partitions_kernel<<<num_blocks, block_size>>>(d_a, d_b, d_c,
-                                                        d_a_offsets, d_b_offsets);
-  } else if constexpr (KernelType == MergeKernelType::Shared) {
-    merge_partitions_kernel_shared<<<num_blocks, block_size, shared_mem_size>>>(
-        d_a, d_b, d_c, d_a_offsets, d_b_offsets, tile_size);
-  }
-
-  cudaDeviceSynchronize();
   cudaMemcpy(output, d_c, total * sizeof(int), cudaMemcpyDeviceToHost);
 
   cudaFree(d_a);
   cudaFree(d_b);
   cudaFree(d_c);
-  cudaFree(d_a_offsets);
-  cudaFree(d_b_offsets);
 }
 
 void merge(int *input1, int size1, int *input2, int size2, int *output) {
@@ -295,5 +309,13 @@ void merge(int *input1, int size1, int *input2, int size2, int *output) {
 
 void merge_shared(int *input1, int size1, int *input2, int size2, int *output) {
   merge_impl<MergeKernelType::Shared>(input1, size1, input2, size2, output);
+}
+
+void merge_device(int *d_input1, int size1, int *d_input2, int size2, int *d_output) {
+  merge_impl_device<MergeKernelType::Simple>(d_input1, size1, d_input2, size2, d_output);
+}
+
+void merge_shared_device(int *d_input1, int size1, int *d_input2, int size2, int *d_output) {
+  merge_impl_device<MergeKernelType::Shared>(d_input1, size1, d_input2, size2, d_output);
 }
 } // namespace PMPP

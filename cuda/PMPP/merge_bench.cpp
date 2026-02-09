@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <benchmark/benchmark.h>
+#include <cuda_runtime.h>
 #include <random>
 #include <vector>
 
@@ -32,18 +33,40 @@ public:
     make_sorted_input(a, size_a, -100000, 100000, rng);
     make_sorted_input(b, size_b, -100000, 100000, rng);
     out.resize(size_a + size_b);
+
+    // Allocate device memory
+    int total = size_a + size_b;
+    cudaMalloc(&d_a, size_a * sizeof(int));
+    cudaMalloc(&d_b, size_b * sizeof(int));
+    cudaMalloc(&d_out, total * sizeof(int));
+
+    // Copy data to device
+    if (size_a > 0) {
+      cudaMemcpy(d_a, a.data(), size_a * sizeof(int), cudaMemcpyHostToDevice);
+    }
+    if (size_b > 0) {
+      cudaMemcpy(d_b, b.data(), size_b * sizeof(int), cudaMemcpyHostToDevice);
+    }
   }
 
   void TearDown(const ::benchmark::State &) override {
     a.clear();
     b.clear();
     out.clear();
+
+    // Free device memory
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_out);
   }
 
 protected:
   std::vector<int> a;
   std::vector<int> b;
   std::vector<int> out;
+  int *d_a = nullptr;
+  int *d_b = nullptr;
+  int *d_out = nullptr;
 };
 
 BENCHMARK_DEFINE_F(MergeBench, CPU_Even)(benchmark::State &state) {
@@ -60,8 +83,8 @@ BENCHMARK_DEFINE_F(MergeBench, GPU_Even)(benchmark::State &state) {
   int size_a = static_cast<int>(state.range(0));
   int size_b = static_cast<int>(state.range(1));
   for (auto _ : state) {
-    PMPP::merge(a.data(), size_a, b.data(), size_b, out.data());
-    benchmark::DoNotOptimize(out.data());
+    PMPP::merge_device(d_a, size_a, d_b, size_b, d_out);
+    benchmark::DoNotOptimize(d_out);
   }
   set_metrics(state, size_a, size_b);
 }
@@ -80,8 +103,8 @@ BENCHMARK_DEFINE_F(MergeBench, GPU_Uneven)(benchmark::State &state) {
   int size_a = static_cast<int>(state.range(0));
   int size_b = static_cast<int>(state.range(1));
   for (auto _ : state) {
-    PMPP::merge(a.data(), size_a, b.data(), size_b, out.data());
-    benchmark::DoNotOptimize(out.data());
+    PMPP::merge_device(d_a, size_a, d_b, size_b, d_out);
+    benchmark::DoNotOptimize(d_out);
   }
   set_metrics(state, size_a, size_b);
 }
@@ -90,8 +113,8 @@ BENCHMARK_DEFINE_F(MergeBench, GPU_Shared_Even)(benchmark::State &state) {
   int size_a = static_cast<int>(state.range(0));
   int size_b = static_cast<int>(state.range(1));
   for (auto _ : state) {
-    PMPP::merge_shared(a.data(), size_a, b.data(), size_b, out.data());
-    benchmark::DoNotOptimize(out.data());
+    PMPP::merge_shared_device(d_a, size_a, d_b, size_b, d_out);
+    benchmark::DoNotOptimize(d_out);
   }
   set_metrics(state, size_a, size_b);
 }
@@ -100,23 +123,21 @@ BENCHMARK_DEFINE_F(MergeBench, GPU_Shared_Uneven)(benchmark::State &state) {
   int size_a = static_cast<int>(state.range(0));
   int size_b = static_cast<int>(state.range(1));
   for (auto _ : state) {
-    PMPP::merge_shared(a.data(), size_a, b.data(), size_b, out.data());
-    benchmark::DoNotOptimize(out.data());
+    PMPP::merge_shared_device(d_a, size_a, d_b, size_b, d_out);
+    benchmark::DoNotOptimize(d_out);
   }
   set_metrics(state, size_a, size_b);
 }
 
 // Helper applicators to attach argument sets in one registration call each.
 static void ApplyEvenSizes(benchmark::internal::Benchmark *b) {
-  for (int size :
-       {1 << 10, 1 << 12, 1 << 14, 1 << 16, 1 << 18, 1 << 20, 1 << 22, 1 << 24}) {
+  for (int size : {1 << 12, 1 << 16, 1 << 20, 1 << 24, 1 << 28}) {
     b->Args({size, size});
   }
 }
 
 static void ApplyUnevenSizes(benchmark::internal::Benchmark *b) {
-  for (int size :
-       {1 << 10, 1 << 12, 1 << 14, 1 << 16, 1 << 18, 1 << 20, 1 << 22, 1 << 24}) {
+  for (int size : {1 << 12, 1 << 16, 1 << 20, 1 << 24, 1 << 28}) {
     b->Args({size, size / 2});
   }
 }
