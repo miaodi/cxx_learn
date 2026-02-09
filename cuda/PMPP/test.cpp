@@ -1,12 +1,13 @@
 #include "vector_add.h"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <gtest/gtest.h>
 #include <iomanip>
 #include <random>
 #include <vector>
-#include "gemm.h"
 #include "convolution.h"
+#include "gemm.h"
 #include "reduction.h"
 
 // ------------------------------ Convolution Tests ------------------------------
