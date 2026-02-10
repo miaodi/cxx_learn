@@ -44,8 +44,9 @@ __global__ void merge_path_partitions_kernel(const int *A, int m, const int *B,
   b_offsets[idx] = b_idx;
 }
 
-__device__ __host__ void merge_sequential(const int *A_start, const int *B_start,
-                                           int *C_start, int a_size, int b_size) {
+__device__ __host__ void merge_sequential(const int *A_start,
+                                          const int *B_start, int *C_start,
+                                          int a_size, int b_size) {
   int i = 0;
   int j = 0;
 
@@ -67,6 +68,34 @@ __device__ __host__ void merge_sequential(const int *A_start, const int *B_start
   while (j < b_size) {
     C_start[i + j] = B_start[j];
     ++j;
+  }
+}
+
+// Shared by both shared-memory kernels: merge one tile from A_shared/B_shared
+// to C.
+__device__ void merge_tile_from_shared(const int *A_shared, int a_tile_count,
+                                       const int *B_shared, int b_tile_count,
+                                       int *C_dst) {
+  int t = threadIdx.x;
+  int block_threads = blockDim.x;
+  int tile_total = a_tile_count + b_tile_count;
+
+  int diag_start = (static_cast<long long>(t) * tile_total) / block_threads;
+  int diag_end = (static_cast<long long>(t + 1) * tile_total) / block_threads;
+
+  int a_start =
+      merge_path(A_shared, a_tile_count, B_shared, b_tile_count, diag_start);
+  int a_end =
+      merge_path(A_shared, a_tile_count, B_shared, b_tile_count, diag_end);
+  int b_start = diag_start - a_start;
+  int b_end = diag_end - a_end;
+
+  const int a_thread_count = a_end - a_start;
+  const int b_thread_count = b_end - b_start;
+
+  if (a_thread_count + b_thread_count > 0) {
+    merge_sequential(A_shared + a_start, B_shared + b_start, C_dst + diag_start,
+                     a_thread_count, b_thread_count);
   }
 }
 
@@ -115,10 +144,14 @@ __global__ void merge_partitions_kernel(const int *A, const int *B, int *C,
                    a_thread_count, b_thread_count);
 }
 
-__global__ void merge_partitions_kernel_shared(const int *A, const int *B,
-                                               int *C, const int *a_offsets,
-                                               const int *b_offsets,
-                                               int tile_size) {
+// Original shared version: load up to tile_size from A and B each, merge one
+// tile (tile_size output elements), advance. Uses 2*tile_size shared memory for
+// A_shared and B_shared.
+__global__ void merge_partitions_kernel_shared_tiled(const int *A, const int *B,
+                                                     int *C,
+                                                     const int *a_offsets,
+                                                     const int *b_offsets,
+                                                     int tile_size) {
   extern __shared__ int shared_mem[];
 
   int block = blockIdx.x;
@@ -146,65 +179,111 @@ __global__ void merge_partitions_kernel_shared(const int *A, const int *B,
 
   int a_remaining = a_count;
   int b_remaining = b_count;
-
   const int total_iterations = (local_total + tile_size - 1) / tile_size;
 
   for (int iter = 0; iter < total_iterations; ++iter) {
     int a_tile = min(tile_size, a_remaining);
     int b_tile = min(tile_size, b_remaining);
-
     const int merge_size = a_tile + b_tile;
 
-    // Copy A tile to shared memory
     for (int i = t; i < a_tile; i += block_threads) {
       A_shared[i] = A_ptr[i];
     }
-
-    // Copy B tile to shared memory
     for (int i = t; i < b_tile; i += block_threads) {
       B_shared[i] = B_ptr[i];
     }
+    __syncthreads();
+
+    merge_tile_from_shared(A_shared, a_tile, B_shared, b_tile, C_ptr);
 
     __syncthreads();
 
-    // Partition the tile using merge_path
-    int diag_start = (static_cast<long long>(t) * tile_size) / block_threads;
-    int diag_end = (static_cast<long long>(t + 1) * tile_size) / block_threads;
-
-    diag_start = min(diag_start, merge_size);
-    diag_end = min(diag_end, merge_size);
-
-    int a_start = merge_path(A_shared, a_tile, B_shared, b_tile, diag_start);
-    int a_end = merge_path(A_shared, a_tile, B_shared, b_tile, diag_end);
-    int b_start = diag_start - a_start;
-    int b_end = diag_end - a_end;
-
-    const int a_thread_count = a_end - a_start;
-    const int b_thread_count = b_end - b_start;
-
-    if (a_thread_count + b_thread_count == 0) {
-      continue;
-    }
-
-    // Merge this thread's partition into output
-    merge_sequential(A_shared + a_start, B_shared + b_start, C_ptr + diag_start,
-                     a_thread_count, b_thread_count);
-
-    __syncthreads();
-
-    // Advance pointers
-    const int A_processed =
-        merge_path(A_shared, a_tile, B_shared, b_tile, tile_size);
-    const int B_processed = tile_size - A_processed;
+    int output_count = min(tile_size, merge_size);
+    int A_processed =
+        merge_path(A_shared, a_tile, B_shared, b_tile, output_count);
+    int B_processed = output_count - A_processed;
     A_ptr += A_processed;
     B_ptr += B_processed;
-    C_ptr += tile_size;
+    C_ptr += output_count;
     a_remaining -= A_processed;
     b_remaining -= B_processed;
   }
 }
 
-enum class MergeKernelType { Simple, Shared };
+// Partitioned shared version: pre-partition block into tile_size chunks, then
+// load exactly tile_size elements per tile. Uses extra shared memory for tile
+// offsets.
+__global__ void merge_partitions_kernel_shared_partitioned(
+    const int *A, const int *B, int *C, const int *a_offsets,
+    const int *b_offsets, int tile_size, int max_num_tiles) {
+  extern __shared__ int shared_mem[];
+
+  int block = blockIdx.x;
+  int a0 = a_offsets[block];
+  int a1 = a_offsets[block + 1];
+  int b0 = b_offsets[block];
+  int b1 = b_offsets[block + 1];
+
+  int a_count = a1 - a0;
+  int b_count = b1 - b0;
+  int local_total = a_count + b_count;
+  if (local_total == 0) {
+    return;
+  }
+
+  const int *A_block = A + a0;
+  const int *B_block = B + b0;
+  int *C_block = C + a0 + b0;
+
+  int t = threadIdx.x;
+  int block_threads = blockDim.x;
+
+  const int num_tiles = (local_total + tile_size - 1) / tile_size;
+
+  int *A_shared = shared_mem;
+  int *B_shared = nullptr;
+  int *a_tile_offsets = shared_mem + tile_size;
+  int *b_tile_offsets = a_tile_offsets + (max_num_tiles + 1);
+
+  for (int i = t; i <= num_tiles; i += block_threads) {
+    int diag = (i == num_tiles) ? local_total : (i * tile_size);
+    int a_idx = merge_path(A_block, a_count, B_block, b_count, diag);
+    int b_idx = diag - a_idx;
+    a_tile_offsets[i] = a_idx;
+    b_tile_offsets[i] = b_idx;
+  }
+  __syncthreads();
+
+  for (int tile = 0; tile < num_tiles; ++tile) {
+    int a_tile_start = a_tile_offsets[tile];
+    int a_tile_end = a_tile_offsets[tile + 1];
+    int b_tile_start = b_tile_offsets[tile];
+    int b_tile_end = b_tile_offsets[tile + 1];
+
+    int a_tile_count = a_tile_end - a_tile_start;
+    int b_tile_count = b_tile_end - b_tile_start;
+
+    const int *A_tile_src = A_block + a_tile_start;
+    const int *B_tile_src = B_block + b_tile_start;
+    int *C_tile_dst = C_block + (tile * tile_size);
+
+    for (int i = t; i < a_tile_count; i += block_threads) {
+      A_shared[i] = A_tile_src[i];
+    }
+    B_shared = A_shared + a_tile_count;
+    for (int i = t; i < b_tile_count; i += block_threads) {
+      B_shared[i] = B_tile_src[i];
+    }
+    __syncthreads();
+
+    merge_tile_from_shared(A_shared, a_tile_count, B_shared, b_tile_count,
+                           C_tile_dst);
+
+    __syncthreads();
+  }
+}
+
+enum class MergeKernelType { Simple, Shared, SharedPartitioned };
 
 int get_sm_count() {
   cudaDeviceProp prop{};
@@ -223,7 +302,8 @@ int get_shared_memory_size() {
 }
 
 template <MergeKernelType KernelType>
-void merge_impl_device(int *d_input1, int size1, int *d_input2, int size2, int *d_output) {
+void merge_impl_device(int *d_input1, int size1, int *d_input2, int size2,
+                       int *d_output) {
   int total = size1 + size2;
   if (total == 0) {
     return;
@@ -238,12 +318,31 @@ void merge_impl_device(int *d_input1, int size1, int *d_input2, int size2, int *
 
   int tile_size = 0;
   int shared_mem_size = 0;
+  int max_num_tiles = 0;
 
   if constexpr (KernelType == MergeKernelType::Shared) {
     int shared_mem_bytes = get_shared_memory_size();
     tile_size = static_cast<int>(0.9 * shared_mem_bytes / (2 * sizeof(int)));
     tile_size = std::max(256, std::min(tile_size, 4096));
     shared_mem_size = tile_size * 2 * sizeof(int);
+  } else if constexpr (KernelType == MergeKernelType::SharedPartitioned) {
+    int shared_mem_bytes = get_shared_memory_size();
+    const int max_partition_size = (total + num_blocks - 1) / num_blocks;
+    tile_size = 256;
+    for (int test_tile_size = 256; test_tile_size <= 9192;
+         test_tile_size += 256) {
+      int test_max_num_tiles =
+          (max_partition_size + test_tile_size - 1) / test_tile_size;
+      int needed_bytes =
+          (test_tile_size + (test_max_num_tiles + 1) * 2) * sizeof(int);
+      if (needed_bytes <= static_cast<int>(0.9 * shared_mem_bytes)) {
+        tile_size = test_tile_size;
+        max_num_tiles = test_max_num_tiles;
+      } else {
+        break;
+      }
+    }
+    shared_mem_size = (tile_size + (max_num_tiles + 1) * 2) * sizeof(int);
   }
 
   int *d_a_offsets = nullptr;
@@ -259,11 +358,17 @@ void merge_impl_device(int *d_input1, int size1, int *d_input2, int size2, int *
       d_input1, size1, d_input2, size2, d_a_offsets, d_b_offsets, num_blocks);
 
   if constexpr (KernelType == MergeKernelType::Simple) {
-    merge_partitions_kernel<<<num_blocks, block_size>>>(d_input1, d_input2, d_output,
-                                                        d_a_offsets, d_b_offsets);
+    merge_partitions_kernel<<<num_blocks, block_size>>>(
+        d_input1, d_input2, d_output, d_a_offsets, d_b_offsets);
   } else if constexpr (KernelType == MergeKernelType::Shared) {
-    merge_partitions_kernel_shared<<<num_blocks, block_size, shared_mem_size>>>(
+    merge_partitions_kernel_shared_tiled<<<num_blocks, block_size,
+                                           shared_mem_size>>>(
         d_input1, d_input2, d_output, d_a_offsets, d_b_offsets, tile_size);
+  } else if constexpr (KernelType == MergeKernelType::SharedPartitioned) {
+    merge_partitions_kernel_shared_partitioned<<<num_blocks, block_size,
+                                                 shared_mem_size>>>(
+        d_input1, d_input2, d_output, d_a_offsets, d_b_offsets, tile_size,
+        max_num_tiles);
   }
 
   cudaDeviceSynchronize();
@@ -311,11 +416,27 @@ void merge_shared(int *input1, int size1, int *input2, int size2, int *output) {
   merge_impl<MergeKernelType::Shared>(input1, size1, input2, size2, output);
 }
 
-void merge_device(int *d_input1, int size1, int *d_input2, int size2, int *d_output) {
-  merge_impl_device<MergeKernelType::Simple>(d_input1, size1, d_input2, size2, d_output);
+void merge_shared_partitioned(int *input1, int size1, int *input2, int size2,
+                              int *output) {
+  merge_impl<MergeKernelType::SharedPartitioned>(input1, size1, input2, size2,
+                                                 output);
 }
 
-void merge_shared_device(int *d_input1, int size1, int *d_input2, int size2, int *d_output) {
-  merge_impl_device<MergeKernelType::Shared>(d_input1, size1, d_input2, size2, d_output);
+void merge_device(int *d_input1, int size1, int *d_input2, int size2,
+                  int *d_output) {
+  merge_impl_device<MergeKernelType::Simple>(d_input1, size1, d_input2, size2,
+                                             d_output);
+}
+
+void merge_shared_device(int *d_input1, int size1, int *d_input2, int size2,
+                         int *d_output) {
+  merge_impl_device<MergeKernelType::Shared>(d_input1, size1, d_input2, size2,
+                                             d_output);
+}
+
+void merge_shared_partitioned_device(int *d_input1, int size1, int *d_input2,
+                                     int size2, int *d_output) {
+  merge_impl_device<MergeKernelType::SharedPartitioned>(
+      d_input1, size1, d_input2, size2, d_output);
 }
 } // namespace PMPP
