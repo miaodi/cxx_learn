@@ -14,3 +14,6 @@ if(GTest_FOUND)
     target_compile_definitions(ParallelSort_tests PRIVATE USE_GTEST)
     target_link_libraries(ParallelSort_tests PRIVATE GTest::gtest GTest::gtest_main pthread)
 endif()
+
+add_executable(RadixSort_test radix_sort_test.cpp radix_sort.cpp)
+target_compile_features(RadixSort_test PRIVATE cxx_std_11)
