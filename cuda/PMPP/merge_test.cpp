@@ -148,3 +148,11 @@ TEST_F(MergeTest, SharedPartitionedRandomLargeInputs) {
   makeSortedInput(b, 8192, -10000, 10000);
   verifyMergeSharedPartitioned(a, b);
 }
+
+TEST_F(MergeTest, SharedPartitionedRandomLargeInputsLarge) {
+  std::vector<int> a;
+  std::vector<int> b;
+  makeSortedInput(a, 16777216, -10000, 10000);
+  makeSortedInput(b, 524288, -10000, 10000);
+  verifyMergeSharedPartitioned(a, b);
+}
