@@ -61,114 +61,170 @@ void exclusive_scan(uint32_t* d_in, uint32_t* d_out, size_t n) {
 }
 
 /**
- * @brief Extract N-bit digit values for all elements with coarsening
- * Each thread processes multiple elements to reduce kernel launch overhead
+ * @brief Extract N-bit digit values for all elements with block partitioning
+ * Each block processes a contiguous chunk of data for better memory coalescing
  * 
  * @tparam RADIX_BITS Number of bits to extract
  */
 template<int RADIX_BITS>
 __global__ void extract_digits(const uint32_t* input, uint32_t* digits, size_t n, int start_bit) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride = gridDim.x * blockDim.x;
-    
     constexpr uint32_t MASK = (1u << RADIX_BITS) - 1;
     
-    // Coarsening: each thread processes multiple elements
-    for (size_t idx = tid; idx < n; idx += stride) {
+    // Compute chunk boundaries for this block
+    size_t chunk_size = (n + gridDim.x - 1) / gridDim.x;
+    size_t block_start = blockIdx.x * chunk_size;
+    size_t block_end = min(block_start + chunk_size, n);
+    
+    // Each thread processes elements within this block's chunk
+    for (size_t idx = block_start + threadIdx.x; idx < block_end; idx += blockDim.x) {
         digits[idx] = (input[idx] >> start_bit) & MASK;
     }
 }
 
 /**
- * @brief Compute histogram of digit values using shared memory (for small RADIX_BITS)
- * 
+ * @brief Compute per-block histograms of digit values using shared memory.
+ *
+ * Each block processes a contiguous chunk of data and builds a local histogram
+ * in shared memory, then writes it to a global 2D array `block_hist` of size
+ * (num_blocks x NUM_BUCKETS).
+ *
+ * No global atomics are used; only shared-memory atomics inside a block.
+ *
  * @tparam RADIX_BITS Number of bits in the digit
  */
 template<int RADIX_BITS>
-__global__ void compute_histogram_shared(const uint32_t* digits, size_t n, uint32_t* histogram) {
+__global__ void compute_block_histogram(const uint32_t* digits, size_t n,
+                                        uint32_t* block_hist) {
     constexpr int NUM_BUCKETS = 1 << RADIX_BITS;
-    
+
     __shared__ uint32_t local_hist[NUM_BUCKETS];
-    
+
     // Initialize shared histogram
     for (int i = threadIdx.x; i < NUM_BUCKETS; i += blockDim.x) {
         local_hist[i] = 0;
     }
     __syncthreads();
-    
-    // Compute local histogram
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride = gridDim.x * blockDim.x;
-    
-    for (size_t idx = tid; idx < n; idx += stride) {
-        atomicAdd(&local_hist[digits[idx]], 1);
+
+    // Compute chunk boundaries for this block
+    size_t chunk_size = (n + gridDim.x - 1) / gridDim.x;
+    size_t block_start = blockIdx.x * chunk_size;
+    size_t block_end = min(block_start + chunk_size, n);
+
+    // Compute local histogram for this block's chunk
+    for (size_t idx = block_start + threadIdx.x; idx < block_end; idx += blockDim.x) {
+        uint32_t d = digits[idx];
+        atomicAdd(&local_hist[d], 1);
     }
     __syncthreads();
-    
-    // Write to global histogram
+
+    // Write this block's histogram to global memory
+    uint32_t* block_hist_row = block_hist + blockIdx.x * NUM_BUCKETS;
     for (int i = threadIdx.x; i < NUM_BUCKETS; i += blockDim.x) {
-        atomicAdd(&histogram[i], local_hist[i]);
+        block_hist_row[i] = local_hist[i];
     }
 }
 
 /**
- * @brief Compute histogram using global atomics (for large RADIX_BITS)
- * 
+ * @brief Reduce per-block histograms into a single global histogram.
+ *
+ * For each bucket, a single thread sums that bucket's counts across all blocks.
+ *
  * @tparam RADIX_BITS Number of bits in the digit
  */
 template<int RADIX_BITS>
-__global__ void compute_histogram_global(const uint32_t* digits, size_t n, uint32_t* histogram) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride = gridDim.x * blockDim.x;
-    
-    // Directly use global atomics for large histograms
-    for (size_t idx = tid; idx < n; idx += stride) {
-        atomicAdd(&histogram[digits[idx]], 1);
+__global__ void reduce_block_histogram(const uint32_t* block_hist,
+                                       uint32_t* histogram,
+                                       int num_blocks) {
+    constexpr int NUM_BUCKETS = 1 << RADIX_BITS;
+
+    int b = blockIdx.x * blockDim.x + threadIdx.x;
+    if (b >= NUM_BUCKETS) return;
+
+    uint32_t sum = 0;
+    for (int blk = 0; blk < num_blocks; ++blk) {
+        sum += block_hist[blk * NUM_BUCKETS + b];
     }
+    histogram[b] = sum;
 }
 
 /**
- * @brief Dispatcher that selects appropriate histogram kernel
+ * @brief Compute per-block prefix offsets for each bucket.
+ *
+ * For each bucket b, we compute an exclusive prefix sum over blocks:
+ *   block_offsets[blk, b] = sum_{k < blk} block_hist[k, b]
+ *
+ * @tparam RADIX_BITS Number of bits in the digit
  */
 template<int RADIX_BITS>
-void compute_histogram(const uint32_t* digits, size_t n, uint32_t* histogram, int num_blocks) {
+__global__ void compute_block_offsets(const uint32_t* block_hist,
+                                      uint32_t* block_offsets,
+                                      int num_blocks) {
     constexpr int NUM_BUCKETS = 1 << RADIX_BITS;
-    constexpr size_t SHARED_MEM_SIZE = NUM_BUCKETS * sizeof(uint32_t);
-    constexpr size_t MAX_SHARED_MEM = 48 * 1024; // 48KB typical limit
-    
-    if constexpr (SHARED_MEM_SIZE <= MAX_SHARED_MEM) {
-        // Use shared memory for small histograms
-        compute_histogram_shared<RADIX_BITS><<<num_blocks, BLOCK_SIZE>>>(digits, n, histogram);
-    } else {
-        // Use global atomics for large histograms
-        compute_histogram_global<RADIX_BITS><<<num_blocks, BLOCK_SIZE>>>(digits, n, histogram);
+
+    int b = blockIdx.x * blockDim.x + threadIdx.x;
+    if (b >= NUM_BUCKETS) return;
+
+    uint32_t running = 0;
+    for (int blk = 0; blk < num_blocks; ++blk) {
+        int idx = blk * NUM_BUCKETS + b;
+        uint32_t count = block_hist[idx];
+        block_offsets[idx] = running;
+        running += count;
     }
 }
 
 /**
- * @brief Scatter elements based on digit values and bucket positions with coarsening
- * Each thread processes multiple elements to improve throughput
+ * @brief Scatter elements based on digit values using hierarchical offsets.
+ *
+ * This kernel uses:
+ *  - `bucket_positions[b]`: global start offset of bucket b
+ *  - `block_offsets[blk, b]`: prefix sum of counts for bucket b over blocks < blk
+ *
+ * Each block processes a contiguous chunk of data for better memory coalescing.
+ * Within a block, we maintain shared-memory counters per bucket to obtain
+ * the intra-block offset. No global atomics are used.
  * 
  * @tparam RADIX_BITS Number of bits in the digit
  * @param input Input array
  * @param output Output array
  * @param n Number of elements
  * @param digits Digit values for each element
- * @param bucket_positions Starting position for each bucket (prefix sum of histogram)
+ * @param bucket_positions Starting position for each bucket (global prefix sum)
+ * @param block_offsets Per-block prefix offsets for each bucket
  */
 template<int RADIX_BITS>
-__global__ void scatter_by_digit(const uint32_t* input, uint32_t* output, size_t n,
-                                 const uint32_t* digits, uint32_t* bucket_positions) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride = gridDim.x * blockDim.x;
-    
-    // Coarsening: each thread processes multiple elements
-    for (size_t idx = tid; idx < n; idx += stride) {
+__global__ void scatter_by_digit_hierarchical(const uint32_t* input, uint32_t* output,
+                                              size_t n,
+                                              const uint32_t* digits,
+                                              const uint32_t* bucket_positions,
+                                              const uint32_t* block_offsets) {
+    constexpr int NUM_BUCKETS = 1 << RADIX_BITS;
+
+    __shared__ uint32_t block_bucket_base[NUM_BUCKETS];
+    __shared__ uint32_t local_bucket_counters[NUM_BUCKETS];
+
+    // Compute this block's base offset for each bucket and zero local counters
+    const uint32_t* block_offset_row = block_offsets + blockIdx.x * NUM_BUCKETS;
+
+    for (int i = threadIdx.x; i < NUM_BUCKETS; i += blockDim.x) {
+        block_bucket_base[i] = bucket_positions[i] + block_offset_row[i];
+        local_bucket_counters[i] = 0;
+    }
+    __syncthreads();
+
+    // Compute chunk boundaries for this block
+    size_t chunk_size = (n + gridDim.x - 1) / gridDim.x;
+    size_t block_start = blockIdx.x * chunk_size;
+    size_t block_end = min(block_start + chunk_size, n);
+
+    // Process elements within this block's chunk
+    for (size_t idx = block_start + threadIdx.x; idx < block_end; idx += blockDim.x) {
         uint32_t value = input[idx];
         uint32_t digit = digits[idx];
-        
-        // Atomically get position within bucket and increment
-        uint32_t out_pos = atomicAdd(&bucket_positions[digit], 1);
+
+        // Get intra-block position within this bucket (shared memory only)
+        uint32_t local_idx = atomicAdd(&local_bucket_counters[digit], 1);
+        uint32_t out_pos = block_bucket_base[digit] + local_idx;
         output[out_pos] = value;
     }
 }
@@ -182,18 +238,22 @@ void radix_sort(const uint32_t* d_input, uint32_t* d_output, size_t n) {
     constexpr int NUM_BUCKETS = 1 << RADIX_BITS;
     constexpr int NUM_ITERATIONS = 32 / RADIX_BITS;
     
+    // Calculate optimal number of blocks based on hardware
+    int num_blocks = get_optimal_num_blocks(n);
+
     // Allocate temporary buffers
     uint32_t *d_temp, *d_digits, *d_histogram, *d_bucket_positions;
+    uint32_t *d_block_hist = nullptr, *d_block_offsets = nullptr;
+
     CUDA_CHECK(cudaMalloc(&d_temp, n * sizeof(uint32_t)));
     CUDA_CHECK(cudaMalloc(&d_digits, n * sizeof(uint32_t)));
     CUDA_CHECK(cudaMalloc(&d_histogram, NUM_BUCKETS * sizeof(uint32_t)));
     CUDA_CHECK(cudaMalloc(&d_bucket_positions, NUM_BUCKETS * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMalloc(&d_block_hist, num_blocks * NUM_BUCKETS * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMalloc(&d_block_offsets, num_blocks * NUM_BUCKETS * sizeof(uint32_t)));
     
     // Copy input to output initially
     CUDA_CHECK(cudaMemcpy(d_output, d_input, n * sizeof(uint32_t), cudaMemcpyDeviceToDevice));
-    
-    // Calculate optimal number of blocks based on hardware
-    int num_blocks = get_optimal_num_blocks(n);
     
     // Process RADIX_BITS bits per iteration from LSB to MSB
     for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
@@ -204,11 +264,17 @@ void radix_sort(const uint32_t* d_input, uint32_t* d_output, size_t n) {
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
         
-        // Step 2: Clear histogram
-        CUDA_CHECK(cudaMemset(d_histogram, 0, NUM_BUCKETS * sizeof(uint32_t)));
+        // Step 2: Compute per-block histograms (no global atomics)
+        compute_block_histogram<RADIX_BITS><<<num_blocks, BLOCK_SIZE>>>(d_digits, n, d_block_hist);
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
         
-        // Step 3: Compute histogram
-        compute_histogram<RADIX_BITS>(d_digits, n, d_histogram, num_blocks);
+        // Step 3: Reduce per-block histograms to global histogram
+        {
+            int threads = NUM_BUCKETS < BLOCK_SIZE ? NUM_BUCKETS : BLOCK_SIZE;
+            int blocks = 1;
+            reduce_block_histogram<RADIX_BITS><<<blocks, threads>>>(d_block_hist, d_histogram, num_blocks);
+        }
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
         
@@ -216,9 +282,18 @@ void radix_sort(const uint32_t* d_input, uint32_t* d_output, size_t n) {
         exclusive_scan(d_histogram, d_bucket_positions, NUM_BUCKETS);
         CUDA_CHECK(cudaDeviceSynchronize());
         
-        // Step 5: Scatter elements to correct positions
-        scatter_by_digit<RADIX_BITS><<<num_blocks, BLOCK_SIZE>>>(d_output, d_temp, n, d_digits, 
-                                                                   d_bucket_positions);
+        // Step 5: Compute per-block prefix offsets for each bucket
+        {
+            int threads = NUM_BUCKETS < BLOCK_SIZE ? NUM_BUCKETS : BLOCK_SIZE;
+            int blocks = 1;
+            compute_block_offsets<RADIX_BITS><<<blocks, threads>>>(d_block_hist, d_block_offsets, num_blocks);
+        }
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
+        
+        // Step 6: Scatter elements to correct positions using hierarchical offsets
+        scatter_by_digit_hierarchical<RADIX_BITS><<<num_blocks, BLOCK_SIZE>>>(
+            d_output, d_temp, n, d_digits, d_bucket_positions, d_block_offsets);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
         
@@ -241,6 +316,8 @@ void radix_sort(const uint32_t* d_input, uint32_t* d_output, size_t n) {
     CUDA_CHECK(cudaFree(d_digits));
     CUDA_CHECK(cudaFree(d_histogram));
     CUDA_CHECK(cudaFree(d_bucket_positions));
+    CUDA_CHECK(cudaFree(d_block_hist));
+    CUDA_CHECK(cudaFree(d_block_offsets));
 }
 
 template<int RADIX_BITS>
@@ -254,16 +331,20 @@ void radix_sort_inplace(uint32_t* d_data, size_t n) {
     
     // Allocate temporary buffers
     uint32_t *d_temp, *d_digits, *d_histogram, *d_bucket_positions;
+    uint32_t *d_block_hist = nullptr, *d_block_offsets = nullptr;
+
+    // Calculate optimal number of blocks based on hardware
+    int num_blocks = get_optimal_num_blocks(n);
+
     CUDA_CHECK(cudaMalloc(&d_temp, n * sizeof(uint32_t)));
     CUDA_CHECK(cudaMalloc(&d_digits, n * sizeof(uint32_t)));
     CUDA_CHECK(cudaMalloc(&d_histogram, NUM_BUCKETS * sizeof(uint32_t)));
     CUDA_CHECK(cudaMalloc(&d_bucket_positions, NUM_BUCKETS * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMalloc(&d_block_hist, num_blocks * NUM_BUCKETS * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMalloc(&d_block_offsets, num_blocks * NUM_BUCKETS * sizeof(uint32_t)));
     
     uint32_t* current = d_data;
     uint32_t* next = d_temp;
-    
-    // Calculate optimal number of blocks based on hardware
-    int num_blocks = get_optimal_num_blocks(n);
     
     // Process RADIX_BITS bits per iteration from LSB to MSB
     for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
@@ -275,20 +356,38 @@ void radix_sort_inplace(uint32_t* d_data, size_t n) {
         CUDA_CHECK(cudaDeviceSynchronize());
         
         // Step 2: Clear histogram
-        CUDA_CHECK(cudaMemset(d_histogram, 0, NUM_BUCKETS * sizeof(uint32_t)));
+        // (no need to clear histogram when using per-block histograms)
         
-        // Step 3: Compute histogram
-        compute_histogram<RADIX_BITS>(d_digits, n, d_histogram, num_blocks);
+        // Step 3: Compute per-block histograms (no global atomics)
+        compute_block_histogram<RADIX_BITS><<<num_blocks, BLOCK_SIZE>>>(d_digits, n, d_block_hist);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
         
-        // Step 4: Compute exclusive prefix sum of histogram to get bucket start positions
+        // Step 4: Reduce per-block histograms to global histogram
+        {
+            int threads = NUM_BUCKETS < BLOCK_SIZE ? NUM_BUCKETS : BLOCK_SIZE;
+            int blocks = 1;
+            reduce_block_histogram<RADIX_BITS><<<blocks, threads>>>(d_block_hist, d_histogram, num_blocks);
+        }
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
+        
+        // Step 5: Compute exclusive prefix sum of histogram to get bucket start positions
         exclusive_scan(d_histogram, d_bucket_positions, NUM_BUCKETS);
         CUDA_CHECK(cudaDeviceSynchronize());
         
-        // Step 5: Scatter elements to correct positions
-        scatter_by_digit<RADIX_BITS><<<num_blocks, BLOCK_SIZE>>>(current, next, n, d_digits,
-                                                                   d_bucket_positions);
+        // Step 6: Compute per-block prefix offsets for each bucket
+        {
+            int threads = NUM_BUCKETS < BLOCK_SIZE ? NUM_BUCKETS : BLOCK_SIZE;
+            int blocks = 1;
+            compute_block_offsets<RADIX_BITS><<<blocks, threads>>>(d_block_hist, d_block_offsets, num_blocks);
+        }
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
+        
+        // Step 7: Scatter elements to correct positions using hierarchical offsets
+        scatter_by_digit_hierarchical<RADIX_BITS><<<num_blocks, BLOCK_SIZE>>>(
+            current, next, n, d_digits, d_bucket_positions, d_block_offsets);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
         
@@ -307,6 +406,8 @@ void radix_sort_inplace(uint32_t* d_data, size_t n) {
     CUDA_CHECK(cudaFree(d_digits));
     CUDA_CHECK(cudaFree(d_histogram));
     CUDA_CHECK(cudaFree(d_bucket_positions));
+    CUDA_CHECK(cudaFree(d_block_hist));
+    CUDA_CHECK(cudaFree(d_block_offsets));
 }
 
 template<int RADIX_BITS>

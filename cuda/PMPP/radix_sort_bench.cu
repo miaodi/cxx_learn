@@ -10,6 +10,66 @@
 
 using namespace pmpp::radix_sort;
 
+// Benchmark CUDA radix sort with 1-bit radix
+static void BM_RadixSort_1bit(benchmark::State& state) {
+    const size_t n = state.range(0);
+    
+    // Generate random data
+    std::mt19937 rng(42);
+    std::uniform_int_distribution<uint32_t> dist(0, UINT32_MAX);
+    std::vector<uint32_t> h_input(n);
+    for (size_t i = 0; i < n; i++) {
+        h_input[i] = dist(rng);
+    }
+    
+    // Allocate device memory
+    uint32_t *d_input, *d_output;
+    cudaMalloc(&d_input, n * sizeof(uint32_t));
+    cudaMalloc(&d_output, n * sizeof(uint32_t));
+    cudaMemcpy(d_input, h_input.data(), n * sizeof(uint32_t), cudaMemcpyHostToDevice);
+    
+    for (auto _ : state) {
+        radix_sort<1>(d_input, d_output, n);
+        cudaDeviceSynchronize();
+    }
+    
+    cudaFree(d_input);
+    cudaFree(d_output);
+    
+    state.SetItemsProcessed(state.iterations() * n);
+    state.SetBytesProcessed(state.iterations() * n * sizeof(uint32_t));
+}
+
+// Benchmark CUDA radix sort with 2-bit radix
+static void BM_RadixSort_2bit(benchmark::State& state) {
+    const size_t n = state.range(0);
+    
+    // Generate random data
+    std::mt19937 rng(42);
+    std::uniform_int_distribution<uint32_t> dist(0, UINT32_MAX);
+    std::vector<uint32_t> h_input(n);
+    for (size_t i = 0; i < n; i++) {
+        h_input[i] = dist(rng);
+    }
+    
+    // Allocate device memory
+    uint32_t *d_input, *d_output;
+    cudaMalloc(&d_input, n * sizeof(uint32_t));
+    cudaMalloc(&d_output, n * sizeof(uint32_t));
+    cudaMemcpy(d_input, h_input.data(), n * sizeof(uint32_t), cudaMemcpyHostToDevice);
+    
+    for (auto _ : state) {
+        radix_sort<2>(d_input, d_output, n);
+        cudaDeviceSynchronize();
+    }
+    
+    cudaFree(d_input);
+    cudaFree(d_output);
+    
+    state.SetItemsProcessed(state.iterations() * n);
+    state.SetBytesProcessed(state.iterations() * n * sizeof(uint32_t));
+}
+
 // Benchmark CUDA radix sort with 4-bit radix
 static void BM_RadixSort_4bit(benchmark::State& state) {
     const size_t n = state.range(0);
@@ -172,6 +232,8 @@ static void BM_StdSort(benchmark::State& state) {
 }
 
 // Register benchmarks with different sizes
+BENCHMARK(BM_RadixSort_1bit)->Range(1<<10, 1<<28)->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_RadixSort_2bit)->Range(1<<10, 1<<28)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_RadixSort_4bit)->Range(1<<10, 1<<28)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_RadixSort_8bit)->Range(1<<10, 1<<28)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_RadixSort_Inplace)->Range(1<<10, 1<<28)->Unit(benchmark::kMillisecond);
