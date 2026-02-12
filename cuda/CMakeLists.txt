@@ -156,6 +156,20 @@ set_target_properties(bank_conflict_bench PROPERTIES
 )
 
 # ============================================================================
+# Sort + Unique benchmark (CUB vs Thrust)
+# ============================================================================
+
+add_executable(sort_and_unique sort_and_unique.cu)
+target_link_libraries(sort_and_unique PRIVATE
+  CUDA::cudart
+  benchmark::benchmark
+)
+set_target_properties(sort_and_unique PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON
+)
+
+# ============================================================================
 # Graph Transpose Benchmark and Test
 # ============================================================================
 
