@@ -170,6 +170,20 @@ set_target_properties(sort_and_unique PROPERTIES
 )
 
 # ============================================================================
+# Merge sort (Thrust) vs Radix sort (CUB) by array length and key width
+# ============================================================================
+
+add_executable(merge_radix_bench merge_radix_bench.cu)
+target_link_libraries(merge_radix_bench PRIVATE
+  CUDA::cudart
+  benchmark::benchmark
+)
+set_target_properties(merge_radix_bench PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON
+)
+
+# ============================================================================
 # Graph Transpose Benchmark and Test
 # ============================================================================
 
