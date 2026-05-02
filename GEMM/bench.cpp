@@ -131,8 +131,8 @@ static void BM_TiledMatMatMulInternalTiledPadded(benchmark::State &state) {
   std::generate(B.begin(), B.end(), [&]() { return dis(gen); });
 
   for (auto _ : state) {
-    gemm::TiledMatMatMulInternalTiledPadded(A.data(), B.data(), C.data(), n, n,
-                                            n);
+    gemm::TiledMatMatMulInternalTiledPadded<float, 16>(A.data(), B.data(),
+                                                       C.data(), n, n, n);
     benchmark::DoNotOptimize(C);
   }
 
