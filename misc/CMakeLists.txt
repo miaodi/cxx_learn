@@ -12,27 +12,29 @@ target_include_directories(mylib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # Benchmark Executable
 # ============================================================================
 
-add_executable(misc_bench bench.cpp)
-target_link_libraries(misc_bench PRIVATE
-  benchmark::benchmark
-  GTest::gtest_main
-  GTest::gmock_main
-  OpenMP::OpenMP_CXX
-  mylib
-)
+if(CXX_LEARNING_HAS_BENCHMARK AND CXX_LEARNING_HAS_GTEST)
+  add_executable(misc_bench bench.cpp)
+  target_link_libraries(misc_bench PRIVATE
+    benchmark::benchmark
+    GTest::gtest_main
+    GTest::gmock_main
+    OpenMP::OpenMP_CXX
+    mylib
+  )
+endif()
 
 # ============================================================================
 # Test Executable
 # ============================================================================
 
-add_executable(misc_tests test.cpp)
-target_link_libraries(misc_tests PRIVATE
-  GTest::gtest_main
-  GTest::gmock_main
-  OpenMP::OpenMP_CXX
-  mylib
-)
+if(CXX_LEARNING_HAS_GTEST)
+  add_executable(misc_tests test.cpp)
+  target_link_libraries(misc_tests PRIVATE
+    GTest::gtest_main
+    GTest::gmock_main
+    OpenMP::OpenMP_CXX
+    mylib
+  )
 
-# Enable testing
-enable_testing()
-add_test(NAME misc_tests COMMAND misc_tests)
+  add_test(NAME misc_tests COMMAND misc_tests)
+endif()

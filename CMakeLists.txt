@@ -130,28 +130,66 @@ endfunction()
 
 message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 
-include(FetchContent)
+option(CXX_LEARNING_BUILD_TESTS "Build test targets when GTest is available" ON)
+option(CXX_LEARNING_BUILD_BENCHMARKS "Build benchmark targets when google/benchmark is available" ON)
+option(CXX_LEARNING_FETCH_DEPS "Download missing third-party dependencies with FetchContent" OFF)
 
-# Google Test
-set(INSTALL_GTEST OFF CACHE BOOL "Disable GTest installation" FORCE)
-FetchContent_Declare(
-  googletest
-  GIT_REPOSITORY https://github.com/google/googletest.git
-  GIT_TAG v1.14.0  # Use stable release instead of main
-  GIT_SHALLOW TRUE
-)
+if(CXX_LEARNING_BUILD_TESTS)
+  find_package(GTest QUIET)
+endif()
 
-# Google Benchmark
-set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Turn off benchmark tests" FORCE)
-set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark installation" FORCE)
-FetchContent_Declare(
-  googlebenchmark
-  GIT_REPOSITORY https://github.com/google/benchmark.git
-  GIT_TAG v1.8.3  # Use stable release
-  GIT_SHALLOW TRUE
-)
+if(CXX_LEARNING_BUILD_BENCHMARKS)
+  find_package(benchmark QUIET)
+endif()
 
-FetchContent_MakeAvailable(googletest googlebenchmark)
+if(CXX_LEARNING_FETCH_DEPS)
+  include(FetchContent)
+
+  if(CXX_LEARNING_BUILD_TESTS AND NOT TARGET GTest::gtest_main)
+    set(INSTALL_GTEST OFF CACHE BOOL "Disable GTest installation" FORCE)
+    FetchContent_Declare(
+      googletest
+      GIT_REPOSITORY https://github.com/google/googletest.git
+      GIT_TAG v1.14.0
+      GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(googletest)
+  endif()
+
+  if(CXX_LEARNING_BUILD_BENCHMARKS AND NOT TARGET benchmark::benchmark)
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Turn off benchmark tests" FORCE)
+    set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark installation" FORCE)
+    FetchContent_Declare(
+      googlebenchmark
+      GIT_REPOSITORY https://github.com/google/benchmark.git
+      GIT_TAG v1.8.3
+      GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(googlebenchmark)
+  endif()
+endif()
+
+set(CXX_LEARNING_HAS_GTEST FALSE)
+if(CXX_LEARNING_BUILD_TESTS AND TARGET GTest::gtest_main)
+  set(CXX_LEARNING_HAS_GTEST TRUE)
+endif()
+
+set(CXX_LEARNING_HAS_BENCHMARK FALSE)
+if(CXX_LEARNING_BUILD_BENCHMARKS AND TARGET benchmark::benchmark)
+  set(CXX_LEARNING_HAS_BENCHMARK TRUE)
+endif()
+
+if(CXX_LEARNING_BUILD_TESTS AND NOT CXX_LEARNING_HAS_GTEST)
+  message(STATUS "GTest not found; test targets that require it will be skipped. Use -DCXX_LEARNING_FETCH_DEPS=ON to download it.")
+endif()
+
+if(CXX_LEARNING_BUILD_BENCHMARKS AND NOT CXX_LEARNING_HAS_BENCHMARK)
+  message(STATUS "google/benchmark not found; benchmark targets will be skipped. Use -DCXX_LEARNING_FETCH_DEPS=ON to download it.")
+endif()
+
+if(CXX_LEARNING_HAS_GTEST)
+  enable_testing()
+endif()
 
 # ============================================================================
 # CUDA Support

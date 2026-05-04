@@ -25,58 +25,60 @@ endif()
 # Benchmark Executables
 # ============================================================================
 
-# ElementWiseProductBench
-add_executable(ElementWiseProductBench ElementWiseProductBench.cpp)
-target_link_libraries(ElementWiseProductBench PRIVATE
-  benchmark::benchmark
-  GTest::gtest_main
-  GTest::gmock_main
-  OpenMP::OpenMP_CXX
-  VectorOps
-)
+if(CXX_LEARNING_HAS_BENCHMARK AND CXX_LEARNING_HAS_GTEST)
+  # ElementWiseProductBench
+  add_executable(ElementWiseProductBench ElementWiseProductBench.cpp)
+  target_link_libraries(ElementWiseProductBench PRIVATE
+    benchmark::benchmark
+    GTest::gtest_main
+    GTest::gmock_main
+    OpenMP::OpenMP_CXX
+    VectorOps
+  )
 
-# CrossProductLenBench
-add_executable(CrossProductLenBench CrossProductLenBench.cpp)
-target_link_libraries(CrossProductLenBench PRIVATE
-  benchmark::benchmark
-  GTest::gtest_main
-  GTest::gmock_main
-  OpenMP::OpenMP_CXX
-  VectorOps
-)
+  # CrossProductLenBench
+  add_executable(CrossProductLenBench CrossProductLenBench.cpp)
+  target_link_libraries(CrossProductLenBench PRIVATE
+    benchmark::benchmark
+    GTest::gtest_main
+    GTest::gmock_main
+    OpenMP::OpenMP_CXX
+    VectorOps
+  )
 
-# VectorOpsBench
-add_executable(VectorOpsBench VectorOpsBench.cpp)
-target_link_libraries(VectorOpsBench PRIVATE
-  benchmark::benchmark
-  GTest::gtest_main
-  GTest::gmock_main
-  OpenMP::OpenMP_CXX
-  VectorOps
-)
+  # VectorOpsBench
+  add_executable(VectorOpsBench VectorOpsBench.cpp)
+  target_link_libraries(VectorOpsBench PRIVATE
+    benchmark::benchmark
+    GTest::gtest_main
+    GTest::gmock_main
+    OpenMP::OpenMP_CXX
+    VectorOps
+  )
 
-# fmaBench
-add_executable(fmaBench fmaBench.cpp)
-target_link_libraries(fmaBench PRIVATE
-  benchmark::benchmark
-  GTest::gtest_main
-  GTest::gmock_main
-  OpenMP::OpenMP_CXX
-  VectorOps
-)
+  # fmaBench
+  add_executable(fmaBench fmaBench.cpp)
+  target_link_libraries(fmaBench PRIVATE
+    benchmark::benchmark
+    GTest::gtest_main
+    GTest::gmock_main
+    OpenMP::OpenMP_CXX
+    VectorOps
+  )
+endif()
 
 # ============================================================================
 # Test Executable
 # ============================================================================
 
-add_executable(CrossProductVecLen_tests test.cpp)
-target_link_libraries(CrossProductVecLen_tests PRIVATE
-  GTest::gtest_main
-  GTest::gmock_main
-  OpenMP::OpenMP_CXX
-  VectorOps
-)
+if(CXX_LEARNING_HAS_GTEST)
+  add_executable(CrossProductVecLen_tests test.cpp)
+  target_link_libraries(CrossProductVecLen_tests PRIVATE
+    GTest::gtest_main
+    GTest::gmock_main
+    OpenMP::OpenMP_CXX
+    VectorOps
+  )
 
-# Enable testing
-enable_testing()
-add_test(NAME CrossProductVecLen_tests COMMAND CrossProductVecLen_tests)
+  add_test(NAME CrossProductVecLen_tests COMMAND CrossProductVecLen_tests)
+endif()

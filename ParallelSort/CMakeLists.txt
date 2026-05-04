@@ -1,18 +1,20 @@
 cmake_minimum_required(VERSION 3.18)
 project(ParallelSort LANGUAGES CXX)
 
-add_executable(ParallelSort_bench bench.cpp)
-target_link_libraries(ParallelSort_bench PRIVATE 
-    benchmark::benchmark
-    OpenMP::OpenMP_CXX
-)
+if(CXX_LEARNING_HAS_BENCHMARK)
+    add_executable(ParallelSort_bench bench.cpp)
+    target_link_libraries(ParallelSort_bench PRIVATE 
+        benchmark::benchmark
+        OpenMP::OpenMP_CXX
+    )
+endif()
 add_executable(ParallelSort_tests parallel_sort_tests.cpp)
 target_link_libraries(ParallelSort_tests PRIVATE OpenMP::OpenMP_CXX)
 
-find_package(GTest QUIET)
-if(GTest_FOUND)
+if(CXX_LEARNING_HAS_GTEST)
     target_compile_definitions(ParallelSort_tests PRIVATE USE_GTEST)
     target_link_libraries(ParallelSort_tests PRIVATE GTest::gtest GTest::gtest_main pthread)
+    add_test(NAME ParallelSort_tests COMMAND ParallelSort_tests)
 endif()
 
 add_executable(RadixSort_test radix_sort_test.cpp radix_sort.cpp)
