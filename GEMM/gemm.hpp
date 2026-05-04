@@ -4,19 +4,230 @@
 #include <vector>
 namespace gemm {
 
-// Matrix multiplication: C = A * B
-// A is M x K, B is K x N, C is M x N
-// Assumes row-major storage
-template <typename T>
-void MatMatMul(const T *A, const T *B, T *C, int M, int N, int K) {
-  for (int i = 0; i < M; ++i) {
-    for (int j = 0; j < N; ++j) {
-      C[i * N + j] = 0.0f;
-      for (int k = 0; k < K; ++k) {
-        C[i * N + j] += A[i * K + k] * B[k * N + j];
+namespace detail {
+
+enum class BetaMode { Zero, One, General };
+
+template <BetaMode betaMode, typename T>
+void ScaleC(int M, int N, T beta, T *C, int ldc) {
+  if constexpr (betaMode == BetaMode::Zero) {
+    (void)beta;
+    for (int i = 0; i < M; ++i) {
+      std::fill(C + i * ldc, C + i * ldc + N, T(0));
+    }
+  } else if constexpr (betaMode == BetaMode::One) {
+    (void)M;
+    (void)N;
+    (void)beta;
+    (void)C;
+    (void)ldc;
+  } else {
+    for (int i = 0; i < M; ++i) {
+      for (int j = 0; j < N; ++j) {
+        C[i * ldc + j] *= beta;
       }
     }
   }
+}
+
+template <BetaMode betaMode, typename T>
+void gemm_naive_impl(int M, int N, int K, T alpha, const T *A, int lda,
+                     const T *B, int ldb, T beta, T *C, int ldc) {
+  ScaleC<betaMode>(M, N, beta, C, ldc);
+
+  for (int i = 0; i < M; ++i) {
+    for (int j = 0; j < N; ++j) {
+      T sum = T(0);
+      for (int k = 0; k < K; ++k) {
+        sum += A[i * lda + k] * B[k * ldb + j];
+      }
+      C[i * ldc + j] += alpha * sum;
+    }
+  }
+}
+
+template <BetaMode betaMode, typename T>
+void gemm_ikj_impl(int M, int N, int K, T alpha, const T *A, int lda,
+                   const T *B, int ldb, T beta, T *C, int ldc) {
+  ScaleC<betaMode>(M, N, beta, C, ldc);
+
+  for (int i = 0; i < M; ++i) {
+    for (int k = 0; k < K; ++k) {
+      const T aik = alpha * A[i * lda + k];
+      for (int j = 0; j < N; ++j) {
+        C[i * ldc + j] += aik * B[k * ldb + j];
+      }
+    }
+  }
+}
+
+template <typename T>
+void gemm_block_kernel(int mc, int nc, int kc, T alpha, const T *A, int lda,
+                       const T *B, int ldb, T *C, int ldc) {
+  for (int i = 0; i < mc; ++i) {
+    for (int k = 0; k < kc; ++k) {
+      const T aik = alpha * A[i * lda + k];
+      for (int j = 0; j < nc; ++j) {
+        C[i * ldc + j] += aik * B[k * ldb + j];
+      }
+    }
+  }
+}
+
+template <BetaMode betaMode, typename T, int BM, int BN, int BK>
+void gemm_blocked_impl(int M, int N, int K, T alpha, const T *A, int lda,
+                       const T *B, int ldb, T beta, T *C, int ldc) {
+  ScaleC<betaMode>(M, N, beta, C, ldc);
+
+  for (int ii = 0; ii < M; ii += BM) {
+    const int mc = std::min(BM, M - ii);
+    for (int jj = 0; jj < N; jj += BN) {
+      const int nc = std::min(BN, N - jj);
+      for (int kk = 0; kk < K; kk += BK) {
+        const int kc = std::min(BK, K - kk);
+        gemm_block_kernel(mc, nc, kc, alpha, A + ii * lda + kk, lda,
+                          B + kk * ldb + jj, ldb, C + ii * ldc + jj, ldc);
+      }
+    }
+  }
+}
+
+template <typename T>
+void PackBPanel(int kc, int nc, const T *B, int ldb, T *Bpack) {
+  for (int k = 0; k < kc; ++k) {
+    std::copy_n(B + k * ldb, nc, Bpack + k * nc);
+  }
+}
+
+template <typename T>
+void gemm_block_kernel_packed_b(int mc, int nc, int kc, T alpha, const T *A,
+                                int lda, const T *Bpack, T *C, int ldc) {
+  for (int i = 0; i < mc; ++i) {
+    for (int k = 0; k < kc; ++k) {
+      const T aik = alpha * A[i * lda + k];
+      const T *BpackRow = Bpack + k * nc;
+      for (int j = 0; j < nc; ++j) {
+        C[i * ldc + j] += aik * BpackRow[j];
+      }
+    }
+  }
+}
+
+template <BetaMode betaMode, typename T, int BM, int BN, int BK>
+void gemm_packed_b_impl(int M, int N, int K, T alpha, const T *A, int lda,
+                        const T *B, int ldb, T beta, T *C, int ldc) {
+  ScaleC<betaMode>(M, N, beta, C, ldc);
+
+  std::vector<T> Bpack(BK * BN);
+
+  for (int jj = 0; jj < N; jj += BN) {
+    const int nc = std::min(BN, N - jj);
+    for (int kk = 0; kk < K; kk += BK) {
+      const int kc = std::min(BK, K - kk);
+      PackBPanel(kc, nc, B + kk * ldb + jj, ldb, Bpack.data());
+
+      for (int ii = 0; ii < M; ii += BM) {
+        const int mc = std::min(BM, M - ii);
+        gemm_block_kernel_packed_b(mc, nc, kc, alpha, A + ii * lda + kk, lda,
+                                   Bpack.data(), C + ii * ldc + jj, ldc);
+      }
+    }
+  }
+}
+
+} // namespace detail
+
+// Matrix multiplication: C = alpha * A * B + beta * C
+// A is M x K with leading dimension lda.
+// B is K x N with leading dimension ldb.
+// C is M x N with leading dimension ldc.
+// Assumes row-major storage and no transposition.
+template <typename T>
+void gemm_naive(int M, int N, int K, T alpha, const T *A, int lda,
+                const T *B, int ldb, T beta, T *C, int ldc) {
+  if (beta == T(0)) {
+    detail::gemm_naive_impl<detail::BetaMode::Zero>(
+        M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    return;
+  }
+
+  if (beta == T(1)) {
+    detail::gemm_naive_impl<detail::BetaMode::One>(
+        M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    return;
+  }
+
+  detail::gemm_naive_impl<detail::BetaMode::General>(
+      M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+}
+
+// Matrix multiplication: C = alpha * A * B + beta * C
+// Same interface as gemm_naive, but uses i-k-j loop order.
+template <typename T>
+void gemm_ikj(int M, int N, int K, T alpha, const T *A, int lda, const T *B,
+              int ldb, T beta, T *C, int ldc) {
+  if (beta == T(0)) {
+    detail::gemm_ikj_impl<detail::BetaMode::Zero>(
+        M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    return;
+  }
+
+  if (beta == T(1)) {
+    detail::gemm_ikj_impl<detail::BetaMode::One>(
+        M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    return;
+  }
+
+  detail::gemm_ikj_impl<detail::BetaMode::General>(
+      M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+}
+
+// Matrix multiplication: C = alpha * A * B + beta * C
+// Same interface as gemm_naive, but computes cache-sized output blocks.
+template <typename T, int BM = 64, int BN = 64, int BK = 64>
+void gemm_blocked(int M, int N, int K, T alpha, const T *A, int lda,
+                  const T *B, int ldb, T beta, T *C, int ldc) {
+  static_assert(BM > 0 && BN > 0 && BK > 0,
+                "Block sizes must be positive");
+
+  if (beta == T(0)) {
+    detail::gemm_blocked_impl<detail::BetaMode::Zero, T, BM, BN, BK>(
+        M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    return;
+  }
+
+  if (beta == T(1)) {
+    detail::gemm_blocked_impl<detail::BetaMode::One, T, BM, BN, BK>(
+        M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    return;
+  }
+
+  detail::gemm_blocked_impl<detail::BetaMode::General, T, BM, BN, BK>(
+      M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+}
+
+// Matrix multiplication: C = alpha * A * B + beta * C
+// Same interface as gemm_blocked, but packs each B panel before reuse.
+template <typename T, int BM = 64, int BN = 64, int BK = 64>
+void gemm_packed_b(int M, int N, int K, T alpha, const T *A, int lda,
+                   const T *B, int ldb, T beta, T *C, int ldc) {
+  static_assert(BM > 0 && BN > 0 && BK > 0,
+                "Block sizes must be positive");
+
+  if (beta == T(0)) {
+    detail::gemm_packed_b_impl<detail::BetaMode::Zero, T, BM, BN, BK>(
+        M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    return;
+  }
+
+  if (beta == T(1)) {
+    detail::gemm_packed_b_impl<detail::BetaMode::One, T, BM, BN, BK>(
+        M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    return;
+  }
+
+  detail::gemm_packed_b_impl<detail::BetaMode::General, T, BM, BN, BK>(
+      M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
 }
 
 template <typename T>
@@ -26,28 +237,6 @@ void MatMatTransMul(const T *A, const T *B, T *C, int M, int N, int K) {
       C[i * N + j] = 0.0f;
       for (int k = 0; k < K; ++k) {
         C[i * N + j] += A[i * K + k] * B[j * K + k];
-      }
-    }
-  }
-}
-
-// Tiled matrix multiplication: C = A * B
-// A is M x K, B is K x N, C is M x N
-// Assumes row-major storage
-template <typename T, int TileSize = 16>
-void TiledMatMatMul(const T *A, const T *B, T *C, int M, int N, int K) {
-  for (int i = 0; i < M; i += TileSize) {
-    for (int j = 0; j < N; j += TileSize) {
-      for (int k = 0; k < K; k += TileSize) {
-        for (int ii = i; ii < std::min(i + TileSize, M); ++ii) {
-          for (int jj = j; jj < std::min(j + TileSize, N); ++jj) {
-            T sum = 0;
-            for (int kk = k; kk < std::min(k + TileSize, K); ++kk) {
-              sum += A[ii * K + kk] * B[kk * N + jj];
-            }
-            C[ii * N + jj] += sum;
-          }
-        }
       }
     }
   }

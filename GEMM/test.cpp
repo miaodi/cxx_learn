@@ -41,7 +41,8 @@ protected:
     fill_random(A);
     fill_random(B);
 
-    MatMatMul<T>(A.data(), B.data(), C_ref.data(), M, N, K);
+    MatMatMul<T>(M, N, K, T(1), A.data(), K, B.data(), N, T(0),
+                 C_ref.data(), N);
 
     // // MatMatTransMul
     // std::vector<T> C_trans(M * N, 0);
