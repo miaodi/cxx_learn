@@ -9,9 +9,9 @@ GEMM means general matrix multiplication. The standard operation is:
 C = alpha * A * B + beta * C
 ```
 
-For now, only `gemm_naive`, `gemm_ikj`, `gemm_blocked`, and `gemm_packed_b`
-should be treated as updated to this BLAS-style contract. The other kernels are
-still older learning experiments and will be migrated later.
+The active kernels in `gemm.hpp` are `gemm_naive`, `gemm_ikj`,
+`gemm_blocked`, `gemm_packed_b`, `gemm_packed_ab`, and
+`gemm_packed_ab_prepack_a`. They all use this row-major BLAS-style contract.
 
 ## Current Scope
 
@@ -49,6 +49,22 @@ void gemm_packed_b(int M, int N, int K,
                    const T *B, int ldb,
                    T beta,
                    T *C, int ldc);
+
+template <typename T, int BM = 64, int BN = 64, int BK = 64>
+void gemm_packed_ab(int M, int N, int K,
+                    T alpha,
+                    const T *A, int lda,
+                    const T *B, int ldb,
+                    T beta,
+                    T *C, int ldc);
+
+template <typename T, int BM = 64, int BN = 64, int BK = 64>
+void gemm_packed_ab_prepack_a(int M, int N, int K,
+                              T alpha,
+                              const T *A, int lda,
+                              const T *B, int ldb,
+                              T beta,
+                              T *C, int ldc);
 ```
 
 This computes a row-major, no-transpose GEMM:
@@ -280,6 +296,94 @@ blocks are packed as their actual `kc x nc` size, and the kernel receives those
 actual dimensions. Zero padding becomes more useful later when introducing a
 fixed-size register micro-kernel.
 
+### A Packing Variants
+
+There are currently two A-packing experiments:
+
+```text
+gemm_packed_ab
+  pack each A block immediately before it is used
+  lower temporary memory footprint
+  may repack the same A block when jj changes
+
+gemm_packed_ab_prepack_a
+  prepack all A block panels once before the main GEMM loop
+  avoids repeated A packing across jj blocks
+  uses a larger Apack_all buffer
+```
+
+Both variants still pack `B` panel-by-panel and reuse each packed `B` panel
+across many `ii` blocks.
+
+### `gemm_packed_ab`
+
+Packs both operands using the first simple packed-AB strategy:
+
+```cpp
+for (int jj = 0; jj < N; jj += BN)
+  for (int kk = 0; kk < K; kk += BK)
+    pack B[kk:kk+BK, jj:jj+BN] into Bpack
+
+    for (int ii = 0; ii < M; ii += BM)
+      pack A[ii:ii+BM, kk:kk+BK] into Apack
+      update C[ii:ii+BM, jj:jj+BN]
+      using packed A and packed B
+```
+
+`Bpack` is still reused across many `ii` blocks. `Apack` is packed immediately
+before use for each `ii` block. This means the same `A` block may be packed
+again when `jj` changes, but the packed `A` data is hot when the compute kernel
+uses it. This is the simplest bridge from packed panels to a future
+micro-kernel.
+
+The current packed layouts are compact row-major:
+
+```cpp
+Apack[i * kc + k] = A[i * lda + k];
+Bpack[k * nc + j] = B[k * ldb + j];
+```
+
+The packed-AB kernel no longer depends on `lda` or `ldb` in the hot inner
+compute loop. It only uses compact packed strides `kc` for `Apack` and `nc` for
+`Bpack`, plus `ldc` for updating the original output matrix.
+
+Like `gemm_packed_b`, this implementation does not pad edge panels with zero.
+It packs actual `mc x kc` and `kc x nc` edge blocks and passes those actual
+dimensions into the kernel.
+
+### `gemm_packed_ab_prepack_a`
+
+Pre-packs all `A` block panels once before the main GEMM loop:
+
+```cpp
+for each kk block
+  for each ii block
+    pack A[ii:ii+BM, kk:kk+BK] into Apack_all
+
+for (int jj = 0; jj < N; jj += BN)
+  for (int kk = 0; kk < K; kk += BK)
+    pack B[kk:kk+BK, jj:jj+BN] into Bpack
+
+    for (int ii = 0; ii < M; ii += BM)
+      update C[ii:ii+BM, jj:jj+BN]
+      using prepacked A panel and packed B
+```
+
+This keeps the same block-level `j-k-i` compute order as `gemm_packed_ab`, but
+removes repeated packing of the same `A[ii, kk]` panel when `jj` changes.
+
+The tradeoff is memory footprint. Instead of a temporary `Apack` buffer of
+`BM * BK` elements, this variant stores one packed slot for every `(kk, ii)`
+panel:
+
+```text
+ceil(K / BK) * ceil(M / BM) * BM * BK elements
+```
+
+This can be close to the full size of `A`, plus edge-panel slack from fixed
+panel slots. It is a useful experiment for measuring whether avoiding repeated
+`A` packing outweighs the larger packed buffer.
+
 ## M, N, K vs. lda, ldb, ldc
 
 `M`, `N`, and `K` describe the logical math problem:
@@ -320,9 +424,11 @@ The intended progression is:
 2. Compare `gemm_naive` against `gemm_ikj`.
 3. Add cache blocking with `gemm_blocked`.
 4. Add panel packing with `gemm_packed_b`.
-5. Make every optimized kernel implement the same visible contract.
-6. Add register blocking and micro-kernels.
-7. Add SIMD once the scalar micro-kernel shape is clear.
+5. Add packed A blocks with `gemm_packed_ab`.
+6. Compare full A prepacking with `gemm_packed_ab_prepack_a`.
+7. Make every optimized kernel implement the same visible contract.
+8. Add register blocking and micro-kernels.
+9. Add SIMD once the scalar micro-kernel shape is clear.
 
 The visible algorithm should remain:
 

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 project(GEMM LANGUAGES CXX)
 
+option(GEMM_ENABLE_PROFILING "Enable GEMM perf-friendly flags and noinline markers" OFF)
+
 # ============================================================================
 # Benchmark Executable
 # ============================================================================
@@ -11,6 +13,12 @@ if(CXX_LEARNING_HAS_BENCHMARK AND CXX_LEARNING_HAS_GTEST)
     benchmark::benchmark
     GTest::gtest_main
   )
+  if(GEMM_ENABLE_PROFILING)
+    target_compile_options(GEMM_bench PRIVATE
+      $<$<CXX_COMPILER_ID:GNU,Clang>:-g;-fno-omit-frame-pointer>
+    )
+    target_compile_definitions(GEMM_bench PRIVATE GEMM_ENABLE_PROFILING)
+  endif()
 
   # Enable SIMD optimizations
   if(COMMAND target_enable_simd)
