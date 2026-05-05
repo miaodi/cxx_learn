@@ -1,4 +1,5 @@
 /release
+/release/*
 /build
 /debug
 /.vscode
