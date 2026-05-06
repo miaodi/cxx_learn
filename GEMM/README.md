@@ -9,9 +9,20 @@ GEMM means general matrix multiplication. The standard operation is:
 C = alpha * A * B + beta * C
 ```
 
-The active kernels in `gemm.hpp` are `gemm_naive`, `gemm_ikj`,
-`gemm_blocked`, `gemm_packed_b`, `gemm_packed_ab`, and
-`gemm_packed_ab_prepack_a`. They all use this row-major BLAS-style contract.
+The active kernels in `gemm.hpp` are:
+
+```text
+gemm_naive
+gemm_ikj
+gemm_blocked
+gemm_packed_b
+gemm_packed_ab
+gemm_packed_ab_register_blocked
+gemm_packed_ab_register_blocked_avx2_float
+gemm_packed_ab_prepack_a
+```
+
+They all use this row-major BLAS-style contract.
 
 ## Current Scope
 
@@ -59,6 +70,22 @@ void gemm_packed_ab(int M, int N, int K,
                     T *C, int ldc);
 
 template <typename T, int BM = 64, int BN = 64, int BK = 64>
+void gemm_packed_ab_register_blocked(int M, int N, int K,
+                                     T alpha,
+                                     const T *A, int lda,
+                                     const T *B, int ldb,
+                                     T beta,
+                                     T *C, int ldc);
+
+template <int BM = 64, int BN = 64, int BK = 64>
+void gemm_packed_ab_register_blocked_avx2_float(int M, int N, int K,
+                                                float alpha,
+                                                const float *A, int lda,
+                                                const float *B, int ldb,
+                                                float beta,
+                                                float *C, int ldc);
+
+template <typename T, int BM = 64, int BN = 64, int BK = 64>
 void gemm_packed_ab_prepack_a(int M, int N, int K,
                               T alpha,
                               const T *A, int lda,
@@ -66,6 +93,9 @@ void gemm_packed_ab_prepack_a(int M, int N, int K,
                               T beta,
                               T *C, int ldc);
 ```
+
+The AVX2 float variant requires `BN` to be a multiple of `8`, matching the
+eight `float` lanes in one 256-bit AVX2 vector.
 
 This computes a row-major, no-transpose GEMM:
 
@@ -351,6 +381,196 @@ Like `gemm_packed_b`, this implementation does not pad edge panels with zero.
 It packs actual `mc x kc` and `kc x nc` edge blocks and passes those actual
 dimensions into the kernel.
 
+### `gemm_packed_ab_register_blocked`
+
+Adds a first scalar register-blocked micro-kernel on top of packed `A` and
+packed `B`:
+
+```cpp
+for each packed A/B block
+  for (int i = 0; i + 4 <= mc; i += 4)
+    for (int j = 0; j + 4 <= nc; j += 4)
+      compute one 4x4 C tile in scalar local variables
+```
+
+The key difference from `gemm_packed_ab` is how the hot block kernel updates
+`C`. The older packed-AB kernel updates `C[i * ldc + j]` inside the innermost
+loops. The register-blocked variant loads a `4 x 4` output tile into local
+variables, accumulates across `kc` with explicit `std::fma` for floating-point
+types, and stores the tile back once.
+
+The `B` panel keeps the compact row-major layout used by `gemm_packed_ab`:
+
+```cpp
+Bpack[k * nc + j]
+```
+
+The `A` block is repacked into `4`-row micro-panels because the register-blocked
+micro-kernel consumes four A values for the same `k` at once:
+
+```cpp
+ApackPanel[k * 4 + r]  // r = 0..3
+```
+
+For one `4 x kc` A micro-panel, memory is organized as:
+
+```text
+k=0: A0,0  A1,0  A2,0  A3,0
+k=1: A0,1  A1,1  A2,1  A3,1
+k=2: A0,2  A1,2  A2,2  A3,2
+...
+```
+
+Full `4 x 4` tiles use the new micro-kernel. Edge rows or columns that do not
+fit the `4 x 4` shape fall back to the scalar packed-AB block logic. This keeps
+the implementation additive and makes the learning progression easy to compare
+in benchmarks.
+
+#### Outer-Product View
+
+The `4 x 4` register block can be viewed as a sequence of tiny outer products.
+For one fixed `k`, the micro-kernel loads four values from an `A` column slice
+and four values from a `B` row slice:
+
+```text
+A slice:        B slice:
+
+  a0              b0  b1  b2  b3
+  a1
+  a2
+  a3
+```
+
+Those values form a `4 x 4` outer product:
+
+```text
+              b0        b1        b2        b3
+          +---------+---------+---------+---------+
+a0  ->    | a0 * b0 | a0 * b1 | a0 * b2 | a0 * b3 |
+          +---------+---------+---------+---------+
+a1  ->    | a1 * b0 | a1 * b1 | a1 * b2 | a1 * b3 |
+          +---------+---------+---------+---------+
+a2  ->    | a2 * b0 | a2 * b1 | a2 * b2 | a2 * b3 |
+          +---------+---------+---------+---------+
+a3  ->    | a3 * b0 | a3 * b1 | a3 * b2 | a3 * b3 |
+          +---------+---------+---------+---------+
+```
+
+The micro-kernel accumulates that outer product into a `4 x 4` tile of `C`
+held in scalar local variables:
+
+```text
+              b0        b1        b2        b3
+          +---------+---------+---------+---------+
+a0  ->    |   c00   |   c01   |   c02   |   c03   |
+          +---------+---------+---------+---------+
+a1  ->    |   c10   |   c11   |   c12   |   c13   |
+          +---------+---------+---------+---------+
+a2  ->    |   c20   |   c21   |   c22   |   c23   |
+          +---------+---------+---------+---------+
+a3  ->    |   c30   |   c31   |   c32   |   c33   |
+          +---------+---------+---------+---------+
+```
+
+Each cell update is:
+
+```cpp
+cij = std::fma(ai, bj, cij);
+```
+
+So the full scalar register-blocked kernel is:
+
+```cpp
+load 4 x 4 C tile into c00 ... c33
+
+for (int k = 0; k < kc; ++k) {
+  load a0, a1, a2, a3
+  load b0, b1, b2, b3
+
+  c00 = fma(a0, b0, c00);  c01 = fma(a0, b1, c01);
+  c02 = fma(a0, b2, c02);  c03 = fma(a0, b3, c03);
+
+  c10 = fma(a1, b0, c10);  c11 = fma(a1, b1, c11);
+  c12 = fma(a1, b2, c12);  c13 = fma(a1, b3, c13);
+
+  c20 = fma(a2, b0, c20);  c21 = fma(a2, b1, c21);
+  c22 = fma(a2, b2, c22);  c23 = fma(a2, b3, c23);
+
+  c30 = fma(a3, b0, c30);  c31 = fma(a3, b1, c31);
+  c32 = fma(a3, b2, c32);  c33 = fma(a3, b3, c33);
+}
+
+store c00 ... c33 back to C
+```
+
+This is still scalar register blocking. SIMD is the next step, where the same
+outer-product idea is expressed with vector registers instead of individual
+scalar variables.
+
+### `gemm_packed_ab_register_blocked_avx2_float`
+
+Adds a first SIMD micro-kernel for `float` using AVX2/FMA. It keeps the same
+packed-AB outer loop as the scalar register-blocked variant, uses the same
+`kc x 4` A micro-panel layout, and uses a `4 x 8` micro-kernel for full tiles:
+
+```text
+MR = 4 rows
+NR = 8 columns
+```
+
+The `NR = 8` choice is specific to `float` on AVX2:
+
+```text
+256-bit AVX2 vector / 32-bit float = 8 floats per vector
+```
+
+For one output tile, the kernel keeps four vector registers for `C`:
+
+```text
+c0 = C row 0, columns j..j+7
+c1 = C row 1, columns j..j+7
+c2 = C row 2, columns j..j+7
+c3 = C row 3, columns j..j+7
+```
+
+For each `k`, it loads one contiguous vector from packed `B` and broadcasts four
+scalar values from one packed `A` micro-panel column:
+
+```cpp
+b  = load Bpack[k, j:j+8]
+a0 = broadcast ApackPanel[k * 4 + 0]
+a1 = broadcast ApackPanel[k * 4 + 1]
+a2 = broadcast ApackPanel[k * 4 + 2]
+a3 = broadcast ApackPanel[k * 4 + 3]
+
+c0 = fmadd(a0, b, c0)
+c1 = fmadd(a1, b, c1)
+c2 = fmadd(a2, b, c2)
+c3 = fmadd(a3, b, c3)
+```
+
+The AVX2 variant stores its temporary `Bpack` buffer with 32-byte alignment and
+pads each packed B row to a multiple of `8` floats. This means every full-tile
+B vector load is 32-byte aligned, even for edge `N` panels whose logical `nc`
+is not a multiple of `8`.
+
+The micro-kernel therefore uses aligned vector loads:
+
+```cpp
+b = _mm256_load_ps(Bpack + k * bpackStride);
+```
+
+Here `bpackStride` is the padded row width:
+
+```cpp
+bpackStride = round_up(nc, 8)
+```
+
+This is the SIMD version of the same outer-product idea. Instead of updating
+sixteen scalar `C` variables for a `4 x 4` tile, it updates four vector
+registers for a `4 x 8` tile. Edge rows or columns fall back to scalar logic
+that understands the `kc x 4` A micro-panel layout and padded B row stride.
+
 ### `gemm_packed_ab_prepack_a`
 
 Pre-packs all `A` block panels once before the main GEMM loop:
@@ -426,9 +646,9 @@ The intended progression is:
 4. Add panel packing with `gemm_packed_b`.
 5. Add packed A blocks with `gemm_packed_ab`.
 6. Compare full A prepacking with `gemm_packed_ab_prepack_a`.
-7. Make every optimized kernel implement the same visible contract.
-8. Add register blocking and micro-kernels.
-9. Add SIMD once the scalar micro-kernel shape is clear.
+7. Add scalar register blocking with `gemm_packed_ab_register_blocked`.
+8. Add SIMD register blocking with `gemm_packed_ab_register_blocked_avx2_float`.
+9. Make every optimized kernel implement the same visible contract.
 
 The visible algorithm should remain:
 
