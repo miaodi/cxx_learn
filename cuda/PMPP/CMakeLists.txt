@@ -40,4 +40,6 @@ if(USE_CUDA)
         target_compile_features(PMPP_radix_sort_bench PRIVATE cxx_std_17)
     endif()
 
+    add_subdirectory(gemm)
+
 endif(USE_CUDA)

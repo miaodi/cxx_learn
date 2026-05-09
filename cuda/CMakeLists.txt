@@ -15,7 +15,13 @@ find_library(CUBLAS_LIBRARY
   PATHS
     $ENV{NVHPC_MATH_LIBS}/lib64
     $ENV{CUDA_HOME}/lib64
+    $ENV{CUDA_HOME}/targets/x86_64-linux/lib
     $ENV{CUDA_ROOT}/lib64
+    $ENV{CUDA_ROOT}/targets/x86_64-linux/lib
+    ${CUDAToolkit_LIBRARY_DIR}
+    ${CMAKE_CUDA_TOOLKIT_LIBRARY_ROOT}/lib64
+    ${CMAKE_CUDA_TOOLKIT_LIBRARY_ROOT}/lib
+    ${CMAKE_CUDA_TOOLKIT_LIBRARY_ROOT}/targets/x86_64-linux/lib
     ${CMAKE_CUDA_TOOLKIT_LIBRARY_ROOT}
   NO_DEFAULT_PATH
 )
