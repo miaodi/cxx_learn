@@ -167,6 +167,63 @@ void BM_Tiled16_2x2(benchmark::State &state) {
   }
 }
 
+void BM_Tiled16_4x4(benchmark::State &state) {
+  if (!ensure_cuda_runtime_available(state)) {
+    return;
+  }
+  try {
+    SgemmBenchmarkData data;
+    for (auto _ : state) {
+      check_cuda(pmpp::gemm::sgemm_tiled_16_4x4(
+          kM, kN, kK, kAlpha, data.d_A_, kK, data.d_B_, kN, kBeta, data.d_C_,
+          kN));
+      check_cuda(cudaDeviceSynchronize());
+      benchmark::DoNotOptimize(data.d_C_);
+    }
+    data.set_metrics(state);
+  } catch (const std::exception &error) {
+    state.SkipWithError(error.what());
+  }
+}
+
+void BM_Tiled16_8x8(benchmark::State &state) {
+  if (!ensure_cuda_runtime_available(state)) {
+    return;
+  }
+  try {
+    SgemmBenchmarkData data;
+    for (auto _ : state) {
+      check_cuda(pmpp::gemm::sgemm_tiled_16_8x8(
+          kM, kN, kK, kAlpha, data.d_A_, kK, data.d_B_, kN, kBeta, data.d_C_,
+          kN));
+      check_cuda(cudaDeviceSynchronize());
+      benchmark::DoNotOptimize(data.d_C_);
+    }
+    data.set_metrics(state);
+  } catch (const std::exception &error) {
+    state.SkipWithError(error.what());
+  }
+}
+
+void BM_Tiled16_16x16(benchmark::State &state) {
+  if (!ensure_cuda_runtime_available(state)) {
+    return;
+  }
+  try {
+    SgemmBenchmarkData data;
+    for (auto _ : state) {
+      check_cuda(pmpp::gemm::sgemm_tiled_16_16x16(
+          kM, kN, kK, kAlpha, data.d_A_, kK, data.d_B_, kN, kBeta, data.d_C_,
+          kN));
+      check_cuda(cudaDeviceSynchronize());
+      benchmark::DoNotOptimize(data.d_C_);
+    }
+    data.set_metrics(state);
+  } catch (const std::exception &error) {
+    state.SkipWithError(error.what());
+  }
+}
+
 void BM_Tiled16_2x2Coalesced(benchmark::State &state) {
   if (!ensure_cuda_runtime_available(state)) {
     return;
@@ -217,6 +274,21 @@ BENCHMARK(BM_Tiled16)
 
 BENCHMARK(BM_Tiled16_2x2)
     ->Name("SGEMM/Tiled16_2x2/1024")
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK(BM_Tiled16_4x4)
+    ->Name("SGEMM/Tiled16_4x4/1024")
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK(BM_Tiled16_8x8)
+    ->Name("SGEMM/Tiled16_8x8/1024")
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK(BM_Tiled16_16x16)
+    ->Name("SGEMM/Tiled16_16x16/1024")
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 

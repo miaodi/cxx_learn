@@ -47,13 +47,16 @@ find_path(CUTLASS_INCLUDE_DIR
 
 if(NOT CUTLASS_INCLUDE_DIR AND CXX_LEARNING_FETCH_CUTLASS)
   include(FetchContent)
+  set(CUTLASS_ENABLE_TESTS OFF CACHE BOOL "Disable CUTLASS tests" FORCE)
+  set(CUTLASS_ENABLE_EXAMPLES OFF CACHE BOOL "Disable CUTLASS examples" FORCE)
+  set(CUTLASS_ENABLE_TOOLS OFF CACHE BOOL "Disable CUTLASS tools" FORCE)
   FetchContent_Declare(
     cutlass
     GIT_REPOSITORY https://github.com/NVIDIA/cutlass.git
     GIT_TAG ${CXX_LEARNING_CUTLASS_GIT_TAG}
     GIT_SHALLOW TRUE
   )
-  FetchContent_Populate(cutlass)
+  FetchContent_MakeAvailable(cutlass)
   set(CUTLASS_INCLUDE_DIR "${cutlass_SOURCE_DIR}/include" CACHE PATH
     "Path to CUTLASS headers"
     FORCE

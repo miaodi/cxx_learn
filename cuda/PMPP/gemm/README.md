@@ -9,6 +9,9 @@ The implementations tracked here are:
 sgemm_ijk
 sgemm_tiled_16
 sgemm_tiled_16_2x2
+sgemm_tiled_16_4x4
+sgemm_tiled_16_8x8
+sgemm_tiled_16_16x16
 sgemm_tiled_16_2x2_coalesced
 sgemm_tiled_16_2x2_k32_coalesced
 ```
@@ -122,6 +125,36 @@ The reason this is the next step after simple tiling is reuse: each loaded
 `A` value contributes to two columns of `C`, and each loaded `B` value
 contributes to two rows of `C`.
 
+`sgemm_tiled_16_4x4` increases the register blocking again. It keeps the same
+`16x16` CUDA thread block, but each thread computes a `4x4` patch of `C`:
+
+```text
+threads/block: 16 x 16 = 256
+C outputs/block: 64 x 64 = 4096
+shared A tile: 64 x 16 floats
+shared B tile: 16 x 64 floats
+shared memory: (64 x 16 + 16 x 64) floats = 8 KiB
+accumulators/thread: 16
+```
+
+This does more arithmetic per loaded shared-memory tile than `2x2`, but it also
+uses more registers per thread. Whether it wins depends on register pressure,
+occupancy, and how well the compiler keeps the accumulator array in registers.
+
+`sgemm_tiled_16_8x8` and `sgemm_tiled_16_16x16` keep increasing work per
+thread to find where performance decays:
+
+```text
+variant    C tile     shared A    shared B    shared memory    accumulators/thread
+8x8        128 x 128  128 x 16    16 x 128    16 KiB           64
+16x16      256 x 256  256 x 16    16 x 256    32 KiB           256
+```
+
+These variants intentionally push register pressure and reduce the number of
+thread blocks for a fixed matrix. `16x16` is especially likely to spill
+accumulators to local memory or lose occupancy, but it is useful as a decay
+point in the benchmark curve.
+
 `sgemm_tiled_16_2x2_coalesced` keeps the same output tile and same register
 blocking, but changes the shared-memory load pattern. Instead of each compute
 thread loading its own two `A` values and two `B` values, the block uses flat
@@ -162,10 +195,13 @@ variant.
 1. `sgemm_ijk`: one thread per `C` element, direct global-memory reads.
 2. `sgemm_tiled_16`: cooperative square shared-memory tiles of `A` and `B`.
 3. `sgemm_tiled_16_2x2`: register blocking, four `C` elements per thread.
-4. `sgemm_tiled_16_2x2_coalesced`: flat cooperative global-memory loads.
-5. `sgemm_tiled_16_2x2_k32_coalesced`: doubled K tile for full-warp A loads.
-6. Vectorized global loads where layout allows it.
-7. Compare against cuBLAS for a performance ceiling.
+4. `sgemm_tiled_16_4x4`: register blocking, sixteen `C` elements per thread.
+5. `sgemm_tiled_16_8x8`: register blocking, sixty-four `C` elements per thread.
+6. `sgemm_tiled_16_16x16`: register blocking, 256 `C` elements per thread.
+7. `sgemm_tiled_16_2x2_coalesced`: flat cooperative global-memory loads.
+8. `sgemm_tiled_16_2x2_k32_coalesced`: doubled K tile for full-warp A loads.
+9. Vectorized global loads where layout allows it.
+10. Compare against cuBLAS for a performance ceiling.
 
 ## Benchmark
 
@@ -183,6 +219,9 @@ It runs:
 SGEMM/NaiveIjk/1024
 SGEMM/Tiled16/1024
 SGEMM/Tiled16_2x2/1024
+SGEMM/Tiled16_4x4/1024
+SGEMM/Tiled16_8x8/1024
+SGEMM/Tiled16_16x16/1024
 SGEMM/Tiled16_2x2Coalesced/1024
 SGEMM/Tiled16_2x2K32Coalesced/1024
 SGEMM/cuBLAS/1024
@@ -227,7 +266,8 @@ cuBLAS speedup over NaiveIjk: 9.55 / 0.735 = 12.99x
 ```
 
 After running the current benchmark, add the `SGEMM/Tiled16_2x2/1024`,
-`SGEMM/Tiled16_2x2Coalesced/1024`, and
+`SGEMM/Tiled16_4x4/1024`, `SGEMM/Tiled16_8x8/1024`,
+`SGEMM/Tiled16_16x16/1024`, `SGEMM/Tiled16_2x2Coalesced/1024`, and
 `SGEMM/Tiled16_2x2K32Coalesced/1024` rows to the table and regenerate the plot
 with the new timing.
 
