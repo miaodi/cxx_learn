@@ -295,15 +295,16 @@ TEST(SgemmTiled16_8x8Test, ComputesAlphaABPlusBetaCWithLeadingDimensions) {
   CHECK_CUDA(cudaFree(d_C));
 }
 
-TEST(SgemmTiled16_16x16Test, ComputesAlphaABPlusBetaCWithLeadingDimensions) {
+TEST(SgemmTiled16_2x2BankConflictFreeTest,
+     ComputesAlphaABPlusBetaCWithLeadingDimensions) {
   SKIP_IF_CUDA_RUNTIME_UNAVAILABLE();
 
-  constexpr int m = 263;
-  constexpr int n = 267;
+  constexpr int m = 33;
+  constexpr int n = 35;
   constexpr int k = 19;
   constexpr int lda = 23;
-  constexpr int ldb = 269;
-  constexpr int ldc = 271;
+  constexpr int ldb = 41;
+  constexpr int ldc = 39;
 
   const float alpha = 0.875f;
   const float beta = -0.25f;
@@ -329,8 +330,104 @@ TEST(SgemmTiled16_16x16Test, ComputesAlphaABPlusBetaCWithLeadingDimensions) {
   CHECK_CUDA(cudaMemcpy(d_C, C.data(), C.size() * sizeof(float),
                         cudaMemcpyHostToDevice));
 
-  CHECK_CUDA(pmpp::gemm::sgemm_tiled_16_16x16(m, n, k, alpha, d_A, lda, d_B,
-                                              ldb, beta, d_C, ldc));
+  CHECK_CUDA(pmpp::gemm::sgemm_tiled_16_2x2_bank_conflict_free(
+      m, n, k, alpha, d_A, lda, d_B, ldb, beta, d_C, ldc));
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  CHECK_CUDA(cudaMemcpy(C.data(), d_C, C.size() * sizeof(float),
+                        cudaMemcpyDeviceToHost));
+  expect_active_matrix_near(expected, C, m, n, ldc, 1e-4f);
+
+  CHECK_CUDA(cudaFree(d_A));
+  CHECK_CUDA(cudaFree(d_B));
+  CHECK_CUDA(cudaFree(d_C));
+}
+
+TEST(SgemmTiled16_4x4BankConflictFreeTest,
+     ComputesAlphaABPlusBetaCWithLeadingDimensions) {
+  SKIP_IF_CUDA_RUNTIME_UNAVAILABLE();
+
+  constexpr int m = 67;
+  constexpr int n = 70;
+  constexpr int k = 19;
+  constexpr int lda = 23;
+  constexpr int ldb = 73;
+  constexpr int ldc = 76;
+
+  const float alpha = 0.875f;
+  const float beta = -0.25f;
+
+  const std::vector<float> A = random_matrix(m, k, lda);
+  const std::vector<float> B = random_matrix(k, n, ldb);
+  std::vector<float> C = random_matrix(m, n, ldc);
+  std::vector<float> expected = C;
+
+  reference_sgemm(m, n, k, alpha, A, lda, B, ldb, beta, expected, ldc);
+
+  float *d_A = nullptr;
+  float *d_B = nullptr;
+  float *d_C = nullptr;
+  CHECK_CUDA(cudaMalloc(&d_A, A.size() * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_B, B.size() * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_C, C.size() * sizeof(float)));
+
+  CHECK_CUDA(cudaMemcpy(d_A, A.data(), A.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_B, B.data(), B.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_C, C.data(), C.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+
+  CHECK_CUDA(pmpp::gemm::sgemm_tiled_16_4x4_bank_conflict_free(
+      m, n, k, alpha, d_A, lda, d_B, ldb, beta, d_C, ldc));
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  CHECK_CUDA(cudaMemcpy(C.data(), d_C, C.size() * sizeof(float),
+                        cudaMemcpyDeviceToHost));
+  expect_active_matrix_near(expected, C, m, n, ldc, 1e-4f);
+
+  CHECK_CUDA(cudaFree(d_A));
+  CHECK_CUDA(cudaFree(d_B));
+  CHECK_CUDA(cudaFree(d_C));
+}
+
+TEST(SgemmTiled16_8x8BankConflictFreeTest,
+     ComputesAlphaABPlusBetaCWithLeadingDimensions) {
+  SKIP_IF_CUDA_RUNTIME_UNAVAILABLE();
+
+  constexpr int m = 131;
+  constexpr int n = 133;
+  constexpr int k = 19;
+  constexpr int lda = 23;
+  constexpr int ldb = 137;
+  constexpr int ldc = 139;
+
+  const float alpha = 0.875f;
+  const float beta = -0.25f;
+
+  const std::vector<float> A = random_matrix(m, k, lda);
+  const std::vector<float> B = random_matrix(k, n, ldb);
+  std::vector<float> C = random_matrix(m, n, ldc);
+  std::vector<float> expected = C;
+
+  reference_sgemm(m, n, k, alpha, A, lda, B, ldb, beta, expected, ldc);
+
+  float *d_A = nullptr;
+  float *d_B = nullptr;
+  float *d_C = nullptr;
+  CHECK_CUDA(cudaMalloc(&d_A, A.size() * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_B, B.size() * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_C, C.size() * sizeof(float)));
+
+  CHECK_CUDA(cudaMemcpy(d_A, A.data(), A.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_B, B.data(), B.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_C, C.data(), C.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+
+  CHECK_CUDA(pmpp::gemm::sgemm_tiled_16_8x8_bank_conflict_free(
+      m, n, k, alpha, d_A, lda, d_B, ldb, beta, d_C, ldc));
   CHECK_CUDA(cudaDeviceSynchronize());
 
   CHECK_CUDA(cudaMemcpy(C.data(), d_C, C.size() * sizeof(float),
@@ -578,13 +675,13 @@ TEST(SgemmTiled16_8x8Test, SupportsZeroKByScalingC) {
   CHECK_CUDA(cudaFree(d_C));
 }
 
-TEST(SgemmTiled16_16x16Test, SupportsZeroKByScalingC) {
+TEST(SgemmTiled16_2x2BankConflictFreeTest, SupportsZeroKByScalingC) {
   SKIP_IF_CUDA_RUNTIME_UNAVAILABLE();
 
-  constexpr int m = 263;
-  constexpr int n = 267;
+  constexpr int m = 33;
+  constexpr int n = 35;
   constexpr int k = 0;
-  constexpr int ldc = 271;
+  constexpr int ldc = 39;
 
   std::vector<float> C = random_matrix(m, n, ldc);
   std::vector<float> expected = C;
@@ -595,7 +692,63 @@ TEST(SgemmTiled16_16x16Test, SupportsZeroKByScalingC) {
   CHECK_CUDA(cudaMemcpy(d_C, C.data(), C.size() * sizeof(float),
                         cudaMemcpyHostToDevice));
 
-  CHECK_CUDA(pmpp::gemm::sgemm_tiled_16_16x16(
+  CHECK_CUDA(pmpp::gemm::sgemm_tiled_16_2x2_bank_conflict_free(
+      m, n, k, 2.0f, nullptr, 0, nullptr, 0, 0.75f, d_C, ldc));
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  CHECK_CUDA(cudaMemcpy(C.data(), d_C, C.size() * sizeof(float),
+                        cudaMemcpyDeviceToHost));
+  expect_active_matrix_near(expected, C, m, n, ldc, 1e-6f);
+
+  CHECK_CUDA(cudaFree(d_C));
+}
+
+TEST(SgemmTiled16_4x4BankConflictFreeTest, SupportsZeroKByScalingC) {
+  SKIP_IF_CUDA_RUNTIME_UNAVAILABLE();
+
+  constexpr int m = 67;
+  constexpr int n = 70;
+  constexpr int k = 0;
+  constexpr int ldc = 76;
+
+  std::vector<float> C = random_matrix(m, n, ldc);
+  std::vector<float> expected = C;
+  reference_sgemm(m, n, k, 2.0f, {}, 0, {}, 0, 0.75f, expected, ldc);
+
+  float *d_C = nullptr;
+  CHECK_CUDA(cudaMalloc(&d_C, C.size() * sizeof(float)));
+  CHECK_CUDA(cudaMemcpy(d_C, C.data(), C.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+
+  CHECK_CUDA(pmpp::gemm::sgemm_tiled_16_4x4_bank_conflict_free(
+      m, n, k, 2.0f, nullptr, 0, nullptr, 0, 0.75f, d_C, ldc));
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  CHECK_CUDA(cudaMemcpy(C.data(), d_C, C.size() * sizeof(float),
+                        cudaMemcpyDeviceToHost));
+  expect_active_matrix_near(expected, C, m, n, ldc, 1e-6f);
+
+  CHECK_CUDA(cudaFree(d_C));
+}
+
+TEST(SgemmTiled16_8x8BankConflictFreeTest, SupportsZeroKByScalingC) {
+  SKIP_IF_CUDA_RUNTIME_UNAVAILABLE();
+
+  constexpr int m = 131;
+  constexpr int n = 133;
+  constexpr int k = 0;
+  constexpr int ldc = 139;
+
+  std::vector<float> C = random_matrix(m, n, ldc);
+  std::vector<float> expected = C;
+  reference_sgemm(m, n, k, 2.0f, {}, 0, {}, 0, 0.75f, expected, ldc);
+
+  float *d_C = nullptr;
+  CHECK_CUDA(cudaMalloc(&d_C, C.size() * sizeof(float)));
+  CHECK_CUDA(cudaMemcpy(d_C, C.data(), C.size() * sizeof(float),
+                        cudaMemcpyHostToDevice));
+
+  CHECK_CUDA(pmpp::gemm::sgemm_tiled_16_8x8_bank_conflict_free(
       m, n, k, 2.0f, nullptr, 0, nullptr, 0, 0.75f, d_C, ldc));
   CHECK_CUDA(cudaDeviceSynchronize());
 
@@ -727,16 +880,42 @@ TEST(SgemmTiled16_8x8Test, RejectsInvalidLeadingDimensions) {
             cudaErrorInvalidValue);
 }
 
-TEST(SgemmTiled16_16x16Test, RejectsInvalidLeadingDimensions) {
+TEST(SgemmTiled16_2x2BankConflictFreeTest, RejectsInvalidLeadingDimensions) {
   float *dummy = reinterpret_cast<float *>(0x1);
-  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_16x16(4, 4, 4, 1.0f, dummy, 3, dummy, 4,
-                                             0.0f, dummy, 4),
+  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_2x2_bank_conflict_free(
+                4, 4, 4, 1.0f, dummy, 3, dummy, 4, 0.0f, dummy, 4),
             cudaErrorInvalidValue);
-  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_16x16(4, 4, 4, 1.0f, dummy, 4, dummy, 3,
-                                             0.0f, dummy, 4),
+  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_2x2_bank_conflict_free(
+                4, 4, 4, 1.0f, dummy, 4, dummy, 3, 0.0f, dummy, 4),
             cudaErrorInvalidValue);
-  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_16x16(4, 4, 4, 1.0f, dummy, 4, dummy, 4,
-                                             0.0f, dummy, 3),
+  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_2x2_bank_conflict_free(
+                4, 4, 4, 1.0f, dummy, 4, dummy, 4, 0.0f, dummy, 3),
+            cudaErrorInvalidValue);
+}
+
+TEST(SgemmTiled16_4x4BankConflictFreeTest, RejectsInvalidLeadingDimensions) {
+  float *dummy = reinterpret_cast<float *>(0x1);
+  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_4x4_bank_conflict_free(
+                4, 4, 4, 1.0f, dummy, 3, dummy, 4, 0.0f, dummy, 4),
+            cudaErrorInvalidValue);
+  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_4x4_bank_conflict_free(
+                4, 4, 4, 1.0f, dummy, 4, dummy, 3, 0.0f, dummy, 4),
+            cudaErrorInvalidValue);
+  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_4x4_bank_conflict_free(
+                4, 4, 4, 1.0f, dummy, 4, dummy, 4, 0.0f, dummy, 3),
+            cudaErrorInvalidValue);
+}
+
+TEST(SgemmTiled16_8x8BankConflictFreeTest, RejectsInvalidLeadingDimensions) {
+  float *dummy = reinterpret_cast<float *>(0x1);
+  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_8x8_bank_conflict_free(
+                4, 4, 4, 1.0f, dummy, 3, dummy, 4, 0.0f, dummy, 4),
+            cudaErrorInvalidValue);
+  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_8x8_bank_conflict_free(
+                4, 4, 4, 1.0f, dummy, 4, dummy, 3, 0.0f, dummy, 4),
+            cudaErrorInvalidValue);
+  EXPECT_EQ(pmpp::gemm::sgemm_tiled_16_8x8_bank_conflict_free(
+                4, 4, 4, 1.0f, dummy, 4, dummy, 4, 0.0f, dummy, 3),
             cudaErrorInvalidValue);
 }
 

@@ -11,7 +11,9 @@ sgemm_tiled_16
 sgemm_tiled_16_2x2
 sgemm_tiled_16_4x4
 sgemm_tiled_16_8x8
-sgemm_tiled_16_16x16
+sgemm_tiled_16_2x2_bank_conflict_free
+sgemm_tiled_16_4x4_bank_conflict_free
+sgemm_tiled_16_8x8_bank_conflict_free
 sgemm_tiled_16_2x2_coalesced
 sgemm_tiled_16_2x2_k32_coalesced
 ```
@@ -141,19 +143,41 @@ This does more arithmetic per loaded shared-memory tile than `2x2`, but it also
 uses more registers per thread. Whether it wins depends on register pressure,
 occupancy, and how well the compiler keeps the accumulator array in registers.
 
-`sgemm_tiled_16_8x8` and `sgemm_tiled_16_16x16` keep increasing work per
-thread to find where performance decays:
+`sgemm_tiled_16_8x8` keeps increasing work per thread to find where performance
+starts to decay:
 
 ```text
 variant    C tile     shared A    shared B    shared memory    accumulators/thread
 8x8        128 x 128  128 x 16    16 x 128    16 KiB           64
-16x16      256 x 256  256 x 16    16 x 256    32 KiB           256
 ```
 
-These variants intentionally push register pressure and reduce the number of
-thread blocks for a fixed matrix. `16x16` is especially likely to spill
-accumulators to local memory or lose occupancy, but it is useful as a decay
-point in the benchmark curve.
+This variant intentionally pushes register pressure and reduces the number of
+thread blocks for a fixed matrix. In the current 1024 benchmark, `4x4` is the
+peak among the register-blocked variants and `8x8` is the useful decay point.
+
+`sgemm_tiled_16_2x2_bank_conflict_free`,
+`sgemm_tiled_16_4x4_bank_conflict_free`, and
+`sgemm_tiled_16_8x8_bank_conflict_free` keep the same output shapes as the
+plain `2x2`, `4x4`, and `8x8` variants, but change the shared-memory staging:
+
+```text
+A tile: flat cooperative load into tileA[OutputRows][Tile + 1]
+B tile: flat cooperative load into tileB[Tile][Tile][ThreadTile + 1]
+```
+
+The `A` tile adds one column of padding so row-to-row accesses do not keep the
+same bank alignment. The `B` tile is stored as `(k, thread-column-group,
+inner-column)` with one padded inner column. During compute, each thread reads:
+
+```cpp
+b[c] = tileB[kk][localThreadCol][c];
+```
+
+That changes the shared-memory stride between neighboring `localThreadCol`
+values from `ThreadTile` to `ThreadTile + 1`, which is the specific bank
+conflict pattern seen in the NCU profile. The name is intentionally an
+experiment label: validate with NCU before treating it as truly conflict-free on
+all architectures and compiler versions.
 
 `sgemm_tiled_16_2x2_coalesced` keeps the same output tile and same register
 blocking, but changes the shared-memory load pattern. Instead of each compute
@@ -197,11 +221,13 @@ variant.
 3. `sgemm_tiled_16_2x2`: register blocking, four `C` elements per thread.
 4. `sgemm_tiled_16_4x4`: register blocking, sixteen `C` elements per thread.
 5. `sgemm_tiled_16_8x8`: register blocking, sixty-four `C` elements per thread.
-6. `sgemm_tiled_16_16x16`: register blocking, 256 `C` elements per thread.
-7. `sgemm_tiled_16_2x2_coalesced`: flat cooperative global-memory loads.
-8. `sgemm_tiled_16_2x2_k32_coalesced`: doubled K tile for full-warp A loads.
-9. Vectorized global loads where layout allows it.
-10. Compare against cuBLAS for a performance ceiling.
+6. `sgemm_tiled_16_2x2_bank_conflict_free`: bank-aware shared-memory layout.
+7. `sgemm_tiled_16_4x4_bank_conflict_free`: bank-aware shared-memory layout.
+8. `sgemm_tiled_16_8x8_bank_conflict_free`: bank-aware shared-memory layout.
+9. `sgemm_tiled_16_2x2_coalesced`: flat cooperative global-memory loads.
+10. `sgemm_tiled_16_2x2_k32_coalesced`: doubled K tile for full-warp A loads.
+11. Vectorized global loads where layout allows it.
+12. Compare against cuBLAS for a performance ceiling.
 
 ## Benchmark
 
@@ -221,7 +247,9 @@ SGEMM/Tiled16/1024
 SGEMM/Tiled16_2x2/1024
 SGEMM/Tiled16_4x4/1024
 SGEMM/Tiled16_8x8/1024
-SGEMM/Tiled16_16x16/1024
+SGEMM/Tiled16_2x2BankConflictFree/1024
+SGEMM/Tiled16_4x4BankConflictFree/1024
+SGEMM/Tiled16_8x8BankConflictFree/1024
 SGEMM/Tiled16_2x2Coalesced/1024
 SGEMM/Tiled16_2x2K32Coalesced/1024
 SGEMM/cuBLAS/1024
@@ -267,9 +295,19 @@ cuBLAS speedup over NaiveIjk: 9.55 / 0.735 = 12.99x
 
 After running the current benchmark, add the `SGEMM/Tiled16_2x2/1024`,
 `SGEMM/Tiled16_4x4/1024`, `SGEMM/Tiled16_8x8/1024`,
-`SGEMM/Tiled16_16x16/1024`, `SGEMM/Tiled16_2x2Coalesced/1024`, and
+`SGEMM/Tiled16_2x2BankConflictFree/1024`,
+`SGEMM/Tiled16_4x4BankConflictFree/1024`,
+`SGEMM/Tiled16_8x8BankConflictFree/1024`,
+`SGEMM/Tiled16_2x2Coalesced/1024`, and
 `SGEMM/Tiled16_2x2K32Coalesced/1024` rows to the table and regenerate the plot
 with the new timing.
+
+## Nsight Compute Profile Notes
+
+`ncu_profile_analysis.md` walks through the exported Nsight Compute CSV reports
+for the `2x2`, `4x4`, and `8x8` register-blocked kernels. It explains how to
+read the main NCU sections and why the current `4x4` kernel is the best point
+for the `1024 x 1024 x 1024` benchmark.
 
 ## CUTLASS Example
 

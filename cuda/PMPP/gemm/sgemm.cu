@@ -315,6 +315,87 @@ __global__ void sgemm_tiled_thread_tile_kernel(
   }
 }
 
+template <int Tile, int ThreadTile>
+__global__ void sgemm_tiled_bank_conflict_free_kernel(
+    int m, int n, int k, float alpha, const float *__restrict__ A, int lda,
+    const float *__restrict__ B, int ldb, float beta, float *__restrict__ C,
+    int ldc) {
+  static_assert(Tile > 0, "Tile size must be positive");
+  static_assert(ThreadTile > 0, "Thread tile size must be positive");
+  static_assert(Tile * Tile <= 1024, "Tile uses too many CUDA threads");
+
+  constexpr int OutputRows = Tile * ThreadTile;
+  constexpr int OutputCols = Tile * ThreadTile;
+  constexpr int ThreadsPerBlock = Tile * Tile;
+
+  const int tileCols = (n + OutputCols - 1) / OutputCols;
+  const int blockRow = blockIdx.x / tileCols;
+  const int blockCol = blockIdx.x % tileCols;
+  const int localThreadRow = threadIdx.x / Tile;
+  const int localThreadCol = threadIdx.x % Tile;
+  const int rowBase = blockRow * OutputRows + localThreadRow * ThreadTile;
+  const int colBase = blockCol * OutputCols + localThreadCol * ThreadTile;
+
+  __shared__ float tileA[OutputRows][Tile];
+  __shared__ float tileB[Tile][OutputCols];
+
+  float acc[ThreadTile][ThreadTile] = {};
+
+  const int kTiles = (k + Tile - 1) / Tile;
+  for (int tile = 0; tile < kTiles; ++tile) {
+    const int kCol = tile * Tile + localThreadCol;
+    for (int r = 0; r < ThreadTile; ++r) {
+      const int sharedRow = localThreadRow * ThreadTile + r;
+      const int globalRow = blockRow * OutputRows + sharedRow;
+      tileA[sharedRow][localThreadCol] =
+          (globalRow < m && kCol < k) ? A[globalRow * lda + kCol] : 0.0f;
+    }
+
+    for (int offset = threadIdx.x; offset < Tile * OutputCols;
+         offset += ThreadsPerBlock) {
+      const int sharedRow = offset / OutputCols;
+      const int sharedCol = offset % OutputCols;
+      const int globalRow = tile * Tile + sharedRow;
+      const int globalCol = blockCol * OutputCols + sharedCol;
+      tileB[sharedRow][sharedCol] =
+          (globalRow < k && globalCol < n) ? B[globalRow * ldb + globalCol]
+                                           : 0.0f;
+    }
+
+    __syncthreads();
+
+    for (int kk = 0; kk < Tile; ++kk) {
+      float a[ThreadTile];
+      float b[ThreadTile];
+      for (int r = 0; r < ThreadTile; ++r) {
+        a[r] = tileA[localThreadRow * ThreadTile + r][kk];
+      }
+      for (int c = 0; c < ThreadTile; ++c) {
+        b[c] = tileB[kk][localThreadCol * ThreadTile + c];
+      }
+      for (int r = 0; r < ThreadTile; ++r) {
+        for (int c = 0; c < ThreadTile; ++c) {
+          acc[r][c] += a[r] * b[c];
+        }
+      }
+    }
+
+    __syncthreads();
+  }
+
+  for (int r = 0; r < ThreadTile; ++r) {
+    const int row = rowBase + r;
+    if (row < m) {
+      for (int c = 0; c < ThreadTile; ++c) {
+        const int col = colBase + c;
+        if (col < n) {
+          C[row * ldc + col] = alpha * acc[r][c] + beta * C[row * ldc + col];
+        }
+      }
+    }
+  }
+}
+
 template <int Tile, int KTile>
 __global__ void
 sgemm_tiled_2x2_coalesced_kernel(int m, int n, int k, float alpha,
@@ -517,6 +598,31 @@ cudaError_t sgemm_tiled_thread_tile_impl(int m, int n, int k, float alpha,
   return cudaGetLastError();
 }
 
+template <int Tile, int ThreadTile>
+cudaError_t sgemm_tiled_bank_conflict_free_impl(
+    int m, int n, int k, float alpha, const float *A, int lda, const float *B,
+    int ldb, float beta, float *C, int ldc, cudaStream_t stream) {
+  if (has_invalid_shape(m, n, k, lda, ldb, ldc)) {
+    return cudaErrorInvalidValue;
+  }
+  if (m == 0 || n == 0) {
+    return cudaSuccess;
+  }
+  if (C == nullptr || (k > 0 && (A == nullptr || B == nullptr))) {
+    return cudaErrorInvalidDevicePointer;
+  }
+
+  constexpr int outputRows = Tile * ThreadTile;
+  constexpr int outputCols = Tile * ThreadTile;
+  const int tileRows = (m + outputRows - 1) / outputRows;
+  const int tileCols = (n + outputCols - 1) / outputCols;
+  const int grid = tileRows * tileCols;
+  sgemm_tiled_bank_conflict_free_kernel<Tile, ThreadTile>
+      <<<grid, Tile * Tile, 0, stream>>>(
+      m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+  return cudaGetLastError();
+}
+
 template <int Tile, int KTile>
 cudaError_t sgemm_tiled_2x2_coalesced_impl(int m, int n, int k, float alpha,
                                            const float *A, int lda,
@@ -596,11 +702,24 @@ cudaError_t sgemm_tiled_16_8x8(int m, int n, int k, float alpha,
       m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, stream);
 }
 
-cudaError_t sgemm_tiled_16_16x16(int m, int n, int k, float alpha,
-                                 const float *A, int lda, const float *B,
-                                 int ldb, float beta, float *C, int ldc,
-                                 cudaStream_t stream) {
-  return sgemm_tiled_thread_tile_impl<16, 16>(
+cudaError_t sgemm_tiled_16_2x2_bank_conflict_free(
+    int m, int n, int k, float alpha, const float *A, int lda, const float *B,
+    int ldb, float beta, float *C, int ldc, cudaStream_t stream) {
+  return sgemm_tiled_bank_conflict_free_impl<16, 2>(
+      m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, stream);
+}
+
+cudaError_t sgemm_tiled_16_4x4_bank_conflict_free(
+    int m, int n, int k, float alpha, const float *A, int lda, const float *B,
+    int ldb, float beta, float *C, int ldc, cudaStream_t stream) {
+  return sgemm_tiled_bank_conflict_free_impl<16, 4>(
+      m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, stream);
+}
+
+cudaError_t sgemm_tiled_16_8x8_bank_conflict_free(
+    int m, int n, int k, float alpha, const float *A, int lda, const float *B,
+    int ldb, float beta, float *C, int ldc, cudaStream_t stream) {
+  return sgemm_tiled_bank_conflict_free_impl<16, 8>(
       m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, stream);
 }
 
