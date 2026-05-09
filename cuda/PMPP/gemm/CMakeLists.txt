@@ -70,6 +70,19 @@ if(CUTLASS_INCLUDE_DIR)
   )
   target_link_libraries(PMPP_cutlass_sgemm_example PRIVATE CUDA::cudart)
   target_compile_features(PMPP_cutlass_sgemm_example PRIVATE cxx_std_17)
+
+  if(CXX_LEARNING_HAS_BENCHMARK)
+    add_executable(PMPP_cutlass_sgemm_bench cutlass_sgemm_bench.cu)
+    target_include_directories(PMPP_cutlass_sgemm_bench SYSTEM PRIVATE
+      ${CUTLASS_INCLUDE_DIR}
+    )
+    target_link_libraries(PMPP_cutlass_sgemm_bench PRIVATE
+      CUDA::cudart
+      CUDA::cublas
+      benchmark::benchmark
+    )
+    target_compile_features(PMPP_cutlass_sgemm_bench PRIVATE cxx_std_17)
+  endif()
 else()
   message(STATUS
     "CUTLASS not found; PMPP_cutlass_sgemm_example will be skipped. "
