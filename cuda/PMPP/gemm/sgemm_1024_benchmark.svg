@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="420" viewBox="0 0 920 420" role="img" aria-labelledby="title desc">
+  <title id="title">SGEMM 1024 benchmark throughput</title>
+  <desc id="desc">Bar chart comparing GFLOP per second for CUDA SGEMM learning kernels and cuBLAS on 1024 cubed matrices.</desc>
+  <rect width="920" height="420" fill="#ffffff"/>
+  <text x="46" y="42" font-family="sans-serif" font-size="22" font-weight="700" fill="#1f2937">SGEMM 1024 x 1024 x 1024 Throughput</text>
+  <text x="46" y="68" font-family="sans-serif" font-size="13" fill="#4b5563">Sample run from README table. Higher is better.</text>
+
+  <line x1="150" y1="330" x2="860" y2="330" stroke="#374151" stroke-width="1.5"/>
+  <line x1="150" y1="90" x2="150" y2="330" stroke="#374151" stroke-width="1.5"/>
+
+  <g font-family="sans-serif" font-size="12" fill="#6b7280">
+    <line x1="144" y1="330" x2="860" y2="330" stroke="#e5e7eb"/>
+    <text x="112" y="334">0</text>
+    <line x1="144" y1="287" x2="860" y2="287" stroke="#e5e7eb"/>
+    <text x="96" y="291">0.5T</text>
+    <line x1="144" y1="243" x2="860" y2="243" stroke="#e5e7eb"/>
+    <text x="106" y="247">1T</text>
+    <line x1="144" y1="200" x2="860" y2="200" stroke="#e5e7eb"/>
+    <text x="96" y="204">1.5T</text>
+    <line x1="144" y1="157" x2="860" y2="157" stroke="#e5e7eb"/>
+    <text x="106" y="161">2T</text>
+    <line x1="144" y1="113" x2="860" y2="113" stroke="#e5e7eb"/>
+    <text x="96" y="117">2.5T</text>
+  </g>
+
+  <g font-family="sans-serif" font-size="12" fill="#111827">
+    <rect x="178" y="312" width="72" height="18" fill="#7c3aed"/>
+    <text x="171" y="353">NaiveIjk</text>
+    <text x="184" y="306">0.212T</text>
+
+    <rect x="288" y="288" width="72" height="42" fill="#2563eb"/>
+    <text x="291" y="353">Tiled16</text>
+    <text x="294" y="282">0.488T</text>
+
+    <rect x="398" y="230" width="72" height="100" fill="#0891b2"/>
+    <text x="392" y="353">2x2</text>
+    <text x="405" y="224">1.154T</text>
+
+    <rect x="508" y="160" width="72" height="170" fill="#059669"/>
+    <text x="502" y="353">4x4</text>
+    <text x="515" y="154">1.967T</text>
+
+    <rect x="618" y="173" width="72" height="157" fill="#d97706"/>
+    <text x="612" y="353">8x8</text>
+    <text x="625" y="167">1.808T</text>
+
+    <rect x="728" y="91" width="72" height="239" fill="#dc2626"/>
+    <text x="728" y="353">cuBLAS</text>
+    <text x="735" y="85">2.768T</text>
+  </g>
+</svg>

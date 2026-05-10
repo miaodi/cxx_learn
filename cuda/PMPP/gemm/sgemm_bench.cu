@@ -205,16 +205,19 @@ void BM_Tiled16_8x8(benchmark::State &state) {
   }
 }
 
-void BM_Tiled16_2x2BankConflictFree(benchmark::State &state) {
+using SgemmFunction = cudaError_t (*)(int, int, int, float, const float *, int,
+                                      const float *, int, float, float *, int,
+                                      cudaStream_t);
+
+void BM_SgemmFunction(benchmark::State &state, SgemmFunction function) {
   if (!ensure_cuda_runtime_available(state)) {
     return;
   }
   try {
     SgemmBenchmarkData data;
     for (auto _ : state) {
-      check_cuda(pmpp::gemm::sgemm_tiled_16_2x2_bank_conflict_free(
-          kM, kN, kK, kAlpha, data.d_A_, kK, data.d_B_, kN, kBeta, data.d_C_,
-          kN));
+      check_cuda(function(kM, kN, kK, kAlpha, data.d_A_, kK, data.d_B_, kN,
+                          kBeta, data.d_C_, kN, nullptr));
       check_cuda(cudaDeviceSynchronize());
       benchmark::DoNotOptimize(data.d_C_);
     }
@@ -224,80 +227,28 @@ void BM_Tiled16_2x2BankConflictFree(benchmark::State &state) {
   }
 }
 
-void BM_Tiled16_4x4BankConflictFree(benchmark::State &state) {
-  if (!ensure_cuda_runtime_available(state)) {
-    return;
-  }
-  try {
-    SgemmBenchmarkData data;
-    for (auto _ : state) {
-      check_cuda(pmpp::gemm::sgemm_tiled_16_4x4_bank_conflict_free(
-          kM, kN, kK, kAlpha, data.d_A_, kK, data.d_B_, kN, kBeta, data.d_C_,
-          kN));
-      check_cuda(cudaDeviceSynchronize());
-      benchmark::DoNotOptimize(data.d_C_);
-    }
-    data.set_metrics(state);
-  } catch (const std::exception &error) {
-    state.SkipWithError(error.what());
-  }
+void BM_Tiled16_2x2K32(benchmark::State &state) {
+  BM_SgemmFunction(state, pmpp::gemm::sgemm_tiled_16_2x2_k32);
 }
 
-void BM_Tiled16_8x8BankConflictFree(benchmark::State &state) {
-  if (!ensure_cuda_runtime_available(state)) {
-    return;
-  }
-  try {
-    SgemmBenchmarkData data;
-    for (auto _ : state) {
-      check_cuda(pmpp::gemm::sgemm_tiled_16_8x8_bank_conflict_free(
-          kM, kN, kK, kAlpha, data.d_A_, kK, data.d_B_, kN, kBeta, data.d_C_,
-          kN));
-      check_cuda(cudaDeviceSynchronize());
-      benchmark::DoNotOptimize(data.d_C_);
-    }
-    data.set_metrics(state);
-  } catch (const std::exception &error) {
-    state.SkipWithError(error.what());
-  }
+void BM_Tiled16_2x2K64(benchmark::State &state) {
+  BM_SgemmFunction(state, pmpp::gemm::sgemm_tiled_16_2x2_k64);
 }
 
-void BM_Tiled16_2x2Coalesced(benchmark::State &state) {
-  if (!ensure_cuda_runtime_available(state)) {
-    return;
-  }
-  try {
-    SgemmBenchmarkData data;
-    for (auto _ : state) {
-      check_cuda(pmpp::gemm::sgemm_tiled_16_2x2_coalesced(
-          kM, kN, kK, kAlpha, data.d_A_, kK, data.d_B_, kN, kBeta, data.d_C_,
-          kN));
-      check_cuda(cudaDeviceSynchronize());
-      benchmark::DoNotOptimize(data.d_C_);
-    }
-    data.set_metrics(state);
-  } catch (const std::exception &error) {
-    state.SkipWithError(error.what());
-  }
+void BM_Tiled16_4x4K32(benchmark::State &state) {
+  BM_SgemmFunction(state, pmpp::gemm::sgemm_tiled_16_4x4_k32);
 }
 
-void BM_Tiled16_2x2K32Coalesced(benchmark::State &state) {
-  if (!ensure_cuda_runtime_available(state)) {
-    return;
-  }
-  try {
-    SgemmBenchmarkData data;
-    for (auto _ : state) {
-      check_cuda(pmpp::gemm::sgemm_tiled_16_2x2_k32_coalesced(
-          kM, kN, kK, kAlpha, data.d_A_, kK, data.d_B_, kN, kBeta, data.d_C_,
-          kN));
-      check_cuda(cudaDeviceSynchronize());
-      benchmark::DoNotOptimize(data.d_C_);
-    }
-    data.set_metrics(state);
-  } catch (const std::exception &error) {
-    state.SkipWithError(error.what());
-  }
+void BM_Tiled16_4x4K64(benchmark::State &state) {
+  BM_SgemmFunction(state, pmpp::gemm::sgemm_tiled_16_4x4_k64);
+}
+
+void BM_Tiled16_8x8K32(benchmark::State &state) {
+  BM_SgemmFunction(state, pmpp::gemm::sgemm_tiled_16_8x8_k32);
+}
+
+void BM_Tiled16_8x8K64(benchmark::State &state) {
+  BM_SgemmFunction(state, pmpp::gemm::sgemm_tiled_16_8x8_k64);
 }
 
 BENCHMARK(BM_NaiveIjk)
@@ -325,28 +276,33 @@ BENCHMARK(BM_Tiled16_8x8)
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
-BENCHMARK(BM_Tiled16_2x2BankConflictFree)
-    ->Name("SGEMM/Tiled16_2x2BankConflictFree/1024")
+BENCHMARK(BM_Tiled16_2x2K32)
+    ->Name("SGEMM/Tiled16_2x2K32/1024")
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
-BENCHMARK(BM_Tiled16_4x4BankConflictFree)
-    ->Name("SGEMM/Tiled16_4x4BankConflictFree/1024")
+BENCHMARK(BM_Tiled16_2x2K64)
+    ->Name("SGEMM/Tiled16_2x2K64/1024")
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
-BENCHMARK(BM_Tiled16_8x8BankConflictFree)
-    ->Name("SGEMM/Tiled16_8x8BankConflictFree/1024")
+BENCHMARK(BM_Tiled16_4x4K32)
+    ->Name("SGEMM/Tiled16_4x4K32/1024")
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
-BENCHMARK(BM_Tiled16_2x2Coalesced)
-    ->Name("SGEMM/Tiled16_2x2Coalesced/1024")
+BENCHMARK(BM_Tiled16_4x4K64)
+    ->Name("SGEMM/Tiled16_4x4K64/1024")
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
-BENCHMARK(BM_Tiled16_2x2K32Coalesced)
-    ->Name("SGEMM/Tiled16_2x2K32Coalesced/1024")
+BENCHMARK(BM_Tiled16_8x8K32)
+    ->Name("SGEMM/Tiled16_8x8K32/1024")
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK(BM_Tiled16_8x8K64)
+    ->Name("SGEMM/Tiled16_8x8K64/1024")
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 

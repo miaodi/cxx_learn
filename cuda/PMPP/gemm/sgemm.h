@@ -26,38 +26,44 @@ cudaError_t sgemm_tiled_16_2x2(int m, int n, int k, float alpha,
                                int ldb, float beta, float *C, int ldc,
                                cudaStream_t stream = nullptr);
 
+cudaError_t sgemm_tiled_16_2x2_k32(int m, int n, int k, float alpha,
+                                   const float *A, int lda, const float *B,
+                                   int ldb, float beta, float *C, int ldc,
+                                   cudaStream_t stream = nullptr);
+
+cudaError_t sgemm_tiled_16_2x2_k64(int m, int n, int k, float alpha,
+                                   const float *A, int lda, const float *B,
+                                   int ldb, float beta, float *C, int ldc,
+                                   cudaStream_t stream = nullptr);
+
 cudaError_t sgemm_tiled_16_4x4(int m, int n, int k, float alpha,
                                const float *A, int lda, const float *B,
                                int ldb, float beta, float *C, int ldc,
                                cudaStream_t stream = nullptr);
+
+cudaError_t sgemm_tiled_16_4x4_k32(int m, int n, int k, float alpha,
+                                   const float *A, int lda, const float *B,
+                                   int ldb, float beta, float *C, int ldc,
+                                   cudaStream_t stream = nullptr);
+
+cudaError_t sgemm_tiled_16_4x4_k64(int m, int n, int k, float alpha,
+                                   const float *A, int lda, const float *B,
+                                   int ldb, float beta, float *C, int ldc,
+                                   cudaStream_t stream = nullptr);
 
 cudaError_t sgemm_tiled_16_8x8(int m, int n, int k, float alpha,
                                const float *A, int lda, const float *B,
                                int ldb, float beta, float *C, int ldc,
                                cudaStream_t stream = nullptr);
 
-cudaError_t sgemm_tiled_16_2x2_bank_conflict_free(
-    int m, int n, int k, float alpha, const float *A, int lda, const float *B,
-    int ldb, float beta, float *C, int ldc, cudaStream_t stream = nullptr);
+cudaError_t sgemm_tiled_16_8x8_k32(int m, int n, int k, float alpha,
+                                   const float *A, int lda, const float *B,
+                                   int ldb, float beta, float *C, int ldc,
+                                   cudaStream_t stream = nullptr);
 
-cudaError_t sgemm_tiled_16_4x4_bank_conflict_free(
-    int m, int n, int k, float alpha, const float *A, int lda, const float *B,
-    int ldb, float beta, float *C, int ldc, cudaStream_t stream = nullptr);
-
-cudaError_t sgemm_tiled_16_8x8_bank_conflict_free(
-    int m, int n, int k, float alpha, const float *A, int lda, const float *B,
-    int ldb, float beta, float *C, int ldc, cudaStream_t stream = nullptr);
-
-cudaError_t sgemm_tiled_16_2x2_coalesced(int m, int n, int k, float alpha,
-                                         const float *A, int lda,
-                                         const float *B, int ldb, float beta,
-                                         float *C, int ldc,
-                                         cudaStream_t stream = nullptr);
-
-cudaError_t sgemm_tiled_16_2x2_k32_coalesced(int m, int n, int k, float alpha,
-                                             const float *A, int lda,
-                                             const float *B, int ldb,
-                                             float beta, float *C, int ldc,
-                                             cudaStream_t stream = nullptr);
+cudaError_t sgemm_tiled_16_8x8_k64(int m, int n, int k, float alpha,
+                                   const float *A, int lda, const float *B,
+                                   int ldb, float beta, float *C, int ldc,
+                                   cudaStream_t stream = nullptr);
 
 } // namespace pmpp::gemm

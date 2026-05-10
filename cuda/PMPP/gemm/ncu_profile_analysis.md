@@ -201,7 +201,7 @@ ncu --target-processes all \
     --section WarpStateStats \
     --section MemoryWorkloadAnalysis \
     --section SourceCounters \
-    --kernel-name regex:sgemm_tiled_4x4_kernel \
+    --kernel-name 'regex:sgemm_tiled_thread_tile_kernel.*' \
     -o ncu_sgemm_4x4 \
     ./PMPP_gemm_bench \
     --benchmark_filter='SGEMM/Tiled16_4x4/1024' \
