@@ -83,6 +83,7 @@ __global__ void sgemm_tiled_thread_tile_kernel(
   const int kTiles = (k + KTile - 1) / KTile;
   for (int tile = 0; tile < kTiles; ++tile) {
     if constexpr (KTile == Tile) {
+      // Fast path: one thread maps directly to one K position for both A and B.
       const int kCol = tile * KTile + localThreadCol;
       const int kRow = tile * KTile + localThreadRow;
 
@@ -95,6 +96,7 @@ __global__ void sgemm_tiled_thread_tile_kernel(
       }
 
       if constexpr (!CoalesceB) {
+        // Non-coalesced B path keeps the same per-thread mapping as the baseline kernel.
 #pragma unroll
         for (int c = 0; c < ThreadTile; ++c) {
           const int bCol = colBase + c;
@@ -104,6 +106,8 @@ __global__ void sgemm_tiled_thread_tile_kernel(
         }
       }
     } else {
+      // Generic path: all threads cooperatively stream A into shared memory.
+#pragma unroll
       for (int offset = threadIdx.x; offset < OutputRows * KTile;
            offset += ThreadsPerBlock) {
         const int sharedRow = offset / KTile;
@@ -117,6 +121,8 @@ __global__ void sgemm_tiled_thread_tile_kernel(
     }
 
     if constexpr (KTile != Tile || CoalesceB) {
+      // Cooperative B load path used for larger K tiles or coalesced-B variants.
+#pragma unroll
       for (int offset = threadIdx.x; offset < KTile * OutputCols;
            offset += ThreadsPerBlock) {
         const int sharedRow = offset / OutputCols;
