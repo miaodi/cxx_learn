@@ -41,6 +41,32 @@ cudaError_t sgemm_tiled_16_4x4(int m, int n, int k, float alpha,
                                int ldb, float beta, float *C, int ldc,
                                cudaStream_t stream = nullptr);
 
+cudaError_t sgemm_tiled_16_4x4_paddedA(int m, int n, int k, float alpha,
+                                       const float *A, int lda,
+                                       const float *B, int ldb, float beta,
+                                       float *C, int ldc,
+                                       cudaStream_t stream = nullptr);
+
+cudaError_t sgemm_tiled_16_4x4_paddedA_coalescedB(
+    int m, int n, int k, float alpha, const float *A, int lda,
+    const float *B, int ldb, float beta, float *C, int ldc,
+    cudaStream_t stream = nullptr);
+
+cudaError_t sgemm_tiled_16_4x4_paddedA_vectorizedC(
+    int m, int n, int k, float alpha, const float *A, int lda,
+    const float *B, int ldb, float beta, float *C, int ldc,
+    cudaStream_t stream = nullptr);
+
+cudaError_t sgemm_tiled_16_4x4_paddedA_coalescedB_vectorizedC(
+    int m, int n, int k, float alpha, const float *A, int lda,
+    const float *B, int ldb, float beta, float *C, int ldc,
+    cudaStream_t stream = nullptr);
+
+cudaError_t sgemm_tiled_64x128_8x8_paddedA_vectorizedC(
+    int m, int n, int k, float alpha, const float *A, int lda,
+    const float *B, int ldb, float beta, float *C, int ldc,
+    cudaStream_t stream = nullptr);
+
 cudaError_t sgemm_tiled_16_4x4_k32(int m, int n, int k, float alpha,
                                    const float *A, int lda, const float *B,
                                    int ldb, float beta, float *C, int ldc,

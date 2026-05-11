@@ -243,6 +243,30 @@ void BM_Tiled16_4x4K64(benchmark::State &state) {
   BM_SgemmFunction(state, pmpp::gemm::sgemm_tiled_16_4x4_k64);
 }
 
+void BM_Tiled16_4x4PaddedA(benchmark::State &state) {
+  BM_SgemmFunction(state, pmpp::gemm::sgemm_tiled_16_4x4_paddedA);
+}
+
+void BM_Tiled16_4x4PaddedACoalescedB(benchmark::State &state) {
+  BM_SgemmFunction(state,
+                   pmpp::gemm::sgemm_tiled_16_4x4_paddedA_coalescedB);
+}
+
+void BM_Tiled16_4x4PaddedAVectorizedC(benchmark::State &state) {
+  BM_SgemmFunction(state,
+                   pmpp::gemm::sgemm_tiled_16_4x4_paddedA_vectorizedC);
+}
+
+void BM_Tiled16_4x4PaddedACoalescedBVectorizedC(benchmark::State &state) {
+  BM_SgemmFunction(
+      state, pmpp::gemm::sgemm_tiled_16_4x4_paddedA_coalescedB_vectorizedC);
+}
+
+void BM_Tiled64x128_8x8PaddedAVectorizedC(benchmark::State &state) {
+  BM_SgemmFunction(state,
+                   pmpp::gemm::sgemm_tiled_64x128_8x8_paddedA_vectorizedC);
+}
+
 void BM_Tiled16_8x8K32(benchmark::State &state) {
   BM_SgemmFunction(state, pmpp::gemm::sgemm_tiled_16_8x8_k32);
 }
@@ -268,6 +292,31 @@ BENCHMARK(BM_Tiled16_2x2)
 
 BENCHMARK(BM_Tiled16_4x4)
     ->Name("SGEMM/Tiled16_4x4/1024")
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK(BM_Tiled16_4x4PaddedA)
+    ->Name("SGEMM/Tiled16_4x4_paddedA/1024")
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK(BM_Tiled16_4x4PaddedACoalescedB)
+    ->Name("SGEMM/Tiled16_4x4_paddedA_coalescedB/1024")
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK(BM_Tiled16_4x4PaddedAVectorizedC)
+    ->Name("SGEMM/Tiled16_4x4_paddedA_vectorizedC/1024")
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK(BM_Tiled16_4x4PaddedACoalescedBVectorizedC)
+    ->Name("SGEMM/Tiled16_4x4_paddedA_coalescedB_vectorizedC/1024")
+    ->Unit(benchmark::kMillisecond)
+    ->UseRealTime();
+
+BENCHMARK(BM_Tiled64x128_8x8PaddedAVectorizedC)
+    ->Name("SGEMM/Tiled64x128_8x8_paddedA_vectorizedC/1024")
     ->Unit(benchmark::kMillisecond)
     ->UseRealTime();
 
