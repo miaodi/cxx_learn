@@ -218,6 +218,17 @@ using SimtSgemm = cutlass::gemm::device::Gemm<
 // ===========================================================================
 
 //                            TbM  TbN  TbK  WpM  WpN  WpK  Stages
+// --- Mirror of Tiled16_4x4_paddedA_vectorizedC_double_buf ---
+// Your kernel: TB 64×64, 256 threads (8 warps), 4×4 per thread, 2 buffers.
+// CUTLASS SIMT only supports K=8 for RowMajor without padding violations,
+// so we use K=8 here.  WP 16×32 gives LaneLayout(4,8) → ThreadTile 4×4.
+using CfgMirror2  = SimtSgemm<  64,  64,  8,   16,  32,  8,    2>;
+// Same block but 4 stages to test deeper pipeline.
+using CfgMirror4  = SimtSgemm<  64,  64,  8,   16,  32,  8,    4>;
+// Alternative warp layout: WP 32×16 gives LaneLayout(8,4) → ThreadTile 4×4.
+using CfgMirrorAlt = SimtSgemm< 64,  64,  8,   32,  16,  8,    2>;
+// --- End mirror configs ---
+
 using CfgA = SimtSgemm<       128, 128,  8,   32,  64,  8,    2>;
 using CfgB = SimtSgemm<        64,  64,  8,   32,  32,  8,    2>;
 using CfgC = SimtSgemm<        64, 128,  8,   32,  64,  8,    2>;
@@ -255,6 +266,9 @@ static void Sizes(benchmark::internal::Benchmark *b) {
       ->UseRealTime();
 
 REGISTER_CUTLASS_BENCH(CfgDef, "Default")
+REGISTER_CUTLASS_BENCH(CfgMirror2,  "TB64x64_WP16x32_K8_S2_mirror")
+REGISTER_CUTLASS_BENCH(CfgMirror4,  "TB64x64_WP16x32_K8_S4_mirror")
+REGISTER_CUTLASS_BENCH(CfgMirrorAlt,"TB64x64_WP32x16_K8_S2_mirror")
 REGISTER_CUTLASS_BENCH(CfgA,   "TB128x128_WP32x64_S2")
 REGISTER_CUTLASS_BENCH(CfgB,   "TB64x64_WP32x32_S2")
 REGISTER_CUTLASS_BENCH(CfgC,   "TB64x128_WP32x64_S2")
