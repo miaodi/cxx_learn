@@ -99,6 +99,7 @@ int main()
 
         std::cout << "Compute Capability:               " << prop.major << "." << prop.minor << "\n";
         std::cout << "Total Global Memory:              " << (prop.totalGlobalMem / (1024.0 * 1024.0)) << " MiB\n";
+        std::cout << "Total Constant Memory:            " << (prop.totalConstMem / 1024.0) << " KiB\n";
         std::cout << "Free / Total (runtime):           "
                   << (freeMem / (1024.0 * 1024.0)) << " / "
                   << (totalMem / (1024.0 * 1024.0)) << " MiB\n";
