@@ -7,7 +7,7 @@ if(USE_CUDA)
     set(PMPP_TEST_DEPENDENCIES ${PMPP_CORE_DEPENDENCIES} GTest::gtest_main)
 
     # Add library with proper CUDA compilation
-    add_library(PMPP vector_add.cu vector_add.h convolution.cu convolution.h reduction.cu reduction.h merge.cu merge.cuh merge.cu radix_sort.cu radix_sort.cuh)
+    add_library(PMPP vector_add.cu vector_add.h convolution.cu convolution.h merge.cu merge.cuh merge.cu radix_sort.cu radix_sort.cuh)
     
     target_link_libraries(PMPP PRIVATE ${PMPP_CORE_DEPENDENCIES})
     target_compile_features(PMPP PRIVATE cxx_std_17)
