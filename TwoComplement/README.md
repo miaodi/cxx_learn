@@ -44,6 +44,12 @@ With `N` bits there are `2^N` possible bit patterns. Two's complement assigns
 the lower half to non-negative values and the upper half to negative values. In
 8 bits, `-5` is encoded as `2^8 - 5 = 251`, which is `11111011` in binary.
 
+Compared with a separate sign-bit representation, two's complement does not
+waste one bit pattern on negative zero. A sign-bit scheme has both `+0` and
+`-0`, while two's complement has only one zero and uses the extra pattern for
+one more negative value. That is why 8-bit two's complement covers `-128` to
+`127`, not `-127` to `127`.
+
 This representation makes addition and subtraction use the same binary hardware
 for signed and unsigned integers. For example, adding `5` and `-5` gives
 `00000101 + 11111011 = 1_00000000`; keeping only the low 8 bits leaves zero.
