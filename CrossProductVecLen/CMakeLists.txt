@@ -21,6 +21,12 @@ if(COMMAND target_enable_simd)
   target_enable_simd(VectorOps)
 endif()
 
+function(enable_cross_product_vec_len_target TARGET_NAME)
+  if(COMMAND target_enable_simd)
+    target_enable_simd(${TARGET_NAME})
+  endif()
+endfunction()
+
 # ============================================================================
 # Benchmark Executables
 # ============================================================================
@@ -28,6 +34,7 @@ endif()
 if(CXX_LEARNING_HAS_BENCHMARK AND CXX_LEARNING_HAS_GTEST)
   # ElementWiseProductBench
   add_executable(ElementWiseProductBench ElementWiseProductBench.cpp)
+  enable_cross_product_vec_len_target(ElementWiseProductBench)
   target_link_libraries(ElementWiseProductBench PRIVATE
     benchmark::benchmark
     GTest::gtest_main
@@ -38,6 +45,7 @@ if(CXX_LEARNING_HAS_BENCHMARK AND CXX_LEARNING_HAS_GTEST)
 
   # CrossProductLenBench
   add_executable(CrossProductLenBench CrossProductLenBench.cpp)
+  enable_cross_product_vec_len_target(CrossProductLenBench)
   target_link_libraries(CrossProductLenBench PRIVATE
     benchmark::benchmark
     GTest::gtest_main
@@ -48,6 +56,7 @@ if(CXX_LEARNING_HAS_BENCHMARK AND CXX_LEARNING_HAS_GTEST)
 
   # VectorOpsBench
   add_executable(VectorOpsBench VectorOpsBench.cpp)
+  enable_cross_product_vec_len_target(VectorOpsBench)
   target_link_libraries(VectorOpsBench PRIVATE
     benchmark::benchmark
     GTest::gtest_main
@@ -58,6 +67,7 @@ if(CXX_LEARNING_HAS_BENCHMARK AND CXX_LEARNING_HAS_GTEST)
 
   # fmaBench
   add_executable(fmaBench fmaBench.cpp)
+  enable_cross_product_vec_len_target(fmaBench)
   target_link_libraries(fmaBench PRIVATE
     benchmark::benchmark
     GTest::gtest_main
@@ -73,6 +83,7 @@ endif()
 
 if(CXX_LEARNING_HAS_GTEST)
   add_executable(CrossProductVecLen_tests test.cpp)
+  enable_cross_product_vec_len_target(CrossProductVecLen_tests)
   target_link_libraries(CrossProductVecLen_tests PRIVATE
     GTest::gtest_main
     GTest::gmock_main
