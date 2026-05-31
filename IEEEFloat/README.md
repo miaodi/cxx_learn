@@ -27,6 +27,7 @@ cmake --build build --target <target>
 | Decimal rounding | `ieee_float_decimal_rounding` | [`notes/decimal_rounding.md`](notes/decimal_rounding.md) |
 | ULP spacing | `ieee_float_ulp_spacing` | [`notes/ulp_spacing.md`](notes/ulp_spacing.md) |
 | Cancellation | `ieee_float_cancellation` | [`notes/cancellation.md`](notes/cancellation.md) |
+| Time-step accumulation | `ieee_float_time_step_accumulation` | [`notes/time_step_accumulation.md`](notes/time_step_accumulation.md) |
 
 ## Checklist
 
@@ -36,6 +37,7 @@ After these examples, you should be able to explain:
 - why float spacing grows as the exponent grows;
 - why `large + small` may equal `large`;
 - why subtraction of nearly equal rounded values can lose useful digits;
+- why repeated `time += dt` updates can drift over long simulations;
 - why addition and multiplication rewrites can change final bits;
 - why reduction order changes results;
 - what Kahan summation compensates for;
