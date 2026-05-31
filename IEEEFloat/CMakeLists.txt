@@ -2,3 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 project(IEEEFloat LANGUAGES CXX)
 
 add_executable(ieee_float32 main.cpp)
+add_executable(ieee_float_kahan_sum kahan_sum.cpp)
+add_executable(ieee_float_decimal_rounding decimal_rounding.cpp)
+add_executable(ieee_float_ulp_spacing ulp_spacing.cpp)
+add_executable(ieee_float_cancellation cancellation.cpp)
