@@ -1,9 +1,16 @@
 #pragma once
 #include <algorithm>
 #include <array>
-#include <immintrin.h>
 #include <iostream>
+#include <type_traits>
 #include <vector>
+
+#if (defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) ||          \
+     defined(_M_X64)) &&                                                      \
+    (defined(AVX512_SUPPORTED) || defined(AVX2_SUPPORTED) ||                 \
+     defined(__AVX512F__) || defined(__AVX2__))
+#include <immintrin.h>
+#endif
 namespace gemm {
 
 // assume row-major storage

@@ -63,6 +63,10 @@ cmake -S . -B build-cuda -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUSE_CUDA=ON
 cmake --build build-cuda -j
 ```
 
+OpenMP is required. On macOS with AppleClang, the root `CMakeLists.txt` hints
+the standard Homebrew `libomp` prefixes (`/opt/homebrew/opt/libomp` and
+`/usr/local/opt/libomp`) before calling `find_package(OpenMP REQUIRED)`.
+
 Run available tests with:
 
 ```sh
@@ -75,11 +79,13 @@ ctest --test-dir build --output-on-failure
   underlying concept, not to hide it behind a reusable framework.
 - Prefer one concept per example or benchmark. If a change demonstrates several
   ideas, split the code or explain the interaction explicitly.
-- For each new example directory, add a short `README.md` when practical. The
-  explanation should cover the concept, what to run, what result pattern to
-  expect, and why the result demonstrates the mechanism.
+- For each new example directory, add a short `README.md` when practical. When a
+  directory has multiple learning topics, use `README.md` as an index and put
+  detailed topic notes in `notes/*.md`, as in `IEEEFloat/` and `Atomic/`.
 - For existing example directories, update the local `README.md` when behavior,
-  assumptions, run commands, or interpretation changes.
+  assumptions, run commands, or interpretation changes. If the directory uses a
+  `notes/` subdirectory, update the relevant note and keep the README index in
+  sync.
 - Favor simple, reproducible inputs and benchmark cases before adding elaborate
   tuning knobs.
 - Treat benchmark numbers as hardware-, compiler-, and build-dependent. Document
@@ -126,6 +132,11 @@ ctest --test-dir build --output-on-failure
 ## Documentation Expectations
 
 When adding or changing an example, prefer this explanation shape:
+
+If the example directory has a `notes/` subdirectory, place the full explanation
+in a topic note and link it from the directory `README.md` index. Keep the README
+compact: project purpose, build commands, a learning map, and cross-cutting
+caveats.
 
 ```text
 # Example Name

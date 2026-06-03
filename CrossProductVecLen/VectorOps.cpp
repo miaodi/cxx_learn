@@ -1,5 +1,5 @@
 #include "VectorOps.h"
-#include <immintrin.h>
+#include <cmath>
 
 void CrossProd(double const *a, double const *b, double *cross_prod) {
   cross_prod[0] = a[1] * b[2] - a[2] * b[1];
@@ -11,6 +11,7 @@ double DotProd(double const *a, double const *b) {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
+#if defined(CROSS_PRODUCT_VEC_LEN_HAS_AVX2)
 void CrossProdAVX2(const double *a, const double *b, double *cross_prod) {
   __m256d va = _mm256_load_pd(a); // [a0, a1, a2, a3]
   __m256d vb = _mm256_load_pd(b); // [b0, b1, b2, b3]
@@ -41,6 +42,7 @@ double DotProdAVX2(const double *a, const double *b) {
 
   return temp[0] + temp[1] + temp[2];
 }
+#endif
 
 double DotProdFMA(const double *a, const double *b) {
   return std::fma(a[0], b[0], std::fma(a[1], b[1], a[2] * b[2]));

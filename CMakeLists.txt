@@ -210,6 +210,15 @@ endif()
 # OpenMP Support
 # ============================================================================
 
+if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" AND NOT DEFINED OpenMP_ROOT)
+  foreach(CXX_LEARNING_LIBOMP_PREFIX "/opt/homebrew/opt/libomp" "/usr/local/opt/libomp")
+    if(EXISTS "${CXX_LEARNING_LIBOMP_PREFIX}/include/omp.h")
+      set(OpenMP_ROOT "${CXX_LEARNING_LIBOMP_PREFIX}" CACHE PATH "Homebrew libomp prefix")
+      break()
+    endif()
+  endforeach()
+endif()
+
 find_package(OpenMP REQUIRED)
 
 # ============================================================================

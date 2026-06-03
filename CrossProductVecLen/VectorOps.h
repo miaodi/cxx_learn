@@ -1,9 +1,18 @@
 #pragma once
-#include <immintrin.h> // AVX2/FMA
+#include <cstddef>
 #include <random>
 
-void CrossProd(double const *a, double const *b, double *cross_prod);
+#if (defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) ||          \
+     defined(_M_X64)) &&                                                      \
+    (defined(AVX2_SUPPORTED) || defined(__AVX2__))
+#include <immintrin.h>
+#define CROSS_PRODUCT_VEC_LEN_HAS_AVX2 1
+#endif
 
+void CrossProd(double const *a, double const *b, double *cross_prod);
+double DotProd(double const *a, double const *b);
+
+#if defined(CROSS_PRODUCT_VEC_LEN_HAS_AVX2)
 void CrossProdAVX2(const double *a, const double *b, double *cross_prod);
 
 inline void CrossProdAVX2Inline(const __m256d &va, const __m256d &vb,
@@ -22,8 +31,6 @@ inline void CrossProdAVX2Inline(const __m256d &va, const __m256d &vb,
   cross_prod = _mm256_permute4x64_pd(result, _MM_SHUFFLE(3, 0, 2, 1));
 }
 
-double DotProd(double const *a, double const *b);
-
 double DotProdAVX2(const double *a, const double *b);
 
 inline double DotProdAVX2Inline(const __m256d &va, const __m256d &vb) {
@@ -32,6 +39,7 @@ inline double DotProdAVX2Inline(const __m256d &va, const __m256d &vb) {
   _mm256_store_pd(temp, mul); // Store intermediate results
   return temp[0] + temp[1] + temp[2];
 }
+#endif
 
 double DotProdFMA(const double *a, const double *b);
 
@@ -52,9 +60,10 @@ void FillRandom(Iterator begin, Iterator end, double min = -1.0,
 struct alignas(32) AlignedDouble3 {
   double data[3];
   AlignedDouble3() : data{0.0, 0.0, 0.0} {}
-  inline double &operator[](size_t index) { return data[index]; }
+  inline double &operator[](std::size_t index) { return data[index]; }
 };
 
+#if defined(CROSS_PRODUCT_VEC_LEN_HAS_AVX2)
 union M256D {
   __m256d m256d;
   double data[4];
@@ -63,6 +72,7 @@ union M256D {
   M256D(const double val) : m256d(_mm256_set1_pd(val)) {}
   M256D(double v0, double v1, double v2)
       : m256d(_mm256_setr_pd(v0, v1, v2, 0.0)) {}
-  inline double &operator[](size_t index) { return data[index]; }
-  inline const double &operator[](size_t index) const { return data[index]; }
+  inline double &operator[](std::size_t index) { return data[index]; }
+  inline const double &operator[](std::size_t index) const { return data[index]; }
 };
+#endif

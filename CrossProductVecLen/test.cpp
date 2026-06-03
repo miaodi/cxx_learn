@@ -1,8 +1,9 @@
 #include "VectorOps.h"
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include <immintrin.h> // AVX2/FMA
 
 bool is_aligned_modulo(void *ptr, size_t alignment) {
   return (reinterpret_cast<uintptr_t>(ptr) % alignment == 0);
@@ -20,6 +21,21 @@ TEST(AlignedArray, Size) {
   EXPECT_TRUE(is_aligned_modulo(c, 32));
 }
 
+TEST(CrossProduct, Scalar) {
+  double a[3] = {1.0, 2.0, 3.0};
+  double b[3] = {4.0, 5.0, 6.0};
+  double cross_prod[3];
+
+  CrossProd(a, b, cross_prod);
+
+  EXPECT_DOUBLE_EQ(cross_prod[0], -3.0);
+  EXPECT_DOUBLE_EQ(cross_prod[1], 6.0);
+  EXPECT_DOUBLE_EQ(cross_prod[2], -3.0);
+  EXPECT_DOUBLE_EQ(DotProd(a, b), 32.0);
+  EXPECT_DOUBLE_EQ(DotProdFMA(a, b), 32.0);
+}
+
+#if defined(CROSS_PRODUCT_VEC_LEN_HAS_AVX2)
 TEST(Intrinsic, AVX2) {
   alignas(32) double a[4] = {0.0, 1.0, 2.0, 3.0};
   __m256d va = _mm256_load_pd(a); // a[0], a[1], a[2], a[3]
@@ -80,3 +96,4 @@ TEST(M256D, DotProduct) {
   double result = DotProdAVX2Inline(v1.m256d, v2.m256d);
   EXPECT_DOUBLE_EQ(result, 1.0 * 4.0 + 2.0 * 5.0 + 3.0 * 6.0); // 32.0
 }
+#endif

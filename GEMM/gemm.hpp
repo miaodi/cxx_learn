@@ -3,11 +3,22 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
-#include <immintrin.h>
 #include <limits>
 #include <new>
 #include <type_traits>
 #include <vector>
+
+#if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) ||           \
+    defined(_M_X64)
+#define GEMM_HAS_X86_INTRINSICS 1
+#endif
+
+#if defined(GEMM_HAS_X86_INTRINSICS) &&                                      \
+    ((defined(AVX2_SUPPORTED) && defined(FMA_SUPPORTED)) ||                  \
+     (defined(__AVX2__) && defined(__FMA__)))
+#include <immintrin.h>
+#define GEMM_HAS_AVX2_FMA_INTRINSICS 1
+#endif
 
 #if defined(GEMM_ENABLE_PROFILING) && (defined(__GNUC__) || defined(__clang__))
 #define GEMM_NOINLINE __attribute__((noinline))
@@ -15,7 +26,8 @@
 #define GEMM_NOINLINE
 #endif
 
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(GEMM_HAS_AVX2_FMA_INTRINSICS) &&                                 \
+    (defined(__GNUC__) || defined(__clang__))
 #define GEMM_TARGET_AVX2_FMA __attribute__((target("avx2,fma")))
 #else
 #define GEMM_TARGET_AVX2_FMA
@@ -380,6 +392,7 @@ void gemm_block_kernel_packed_ab_register_blocked(int mc, int nc, int kc,
   }
 }
 
+#if defined(GEMM_HAS_AVX2_FMA_INTRINSICS)
 GEMM_NOINLINE GEMM_TARGET_AVX2_FMA
 inline void gemm_micro_kernel_4x8_packed_ab_avx2_float(
     int kc, float alpha, const float *Apack, const float *Bpack,
@@ -445,6 +458,7 @@ inline void gemm_block_kernel_packed_ab_register_blocked_avx2_float(
                                         C + fullRows * ldc, ldc);
   }
 }
+#endif
 
 template <BetaMode betaMode, typename T, int BM, int BN, int BK>
 void gemm_packed_b_impl(int M, int N, int K, T alpha, const T *A, int lda,
@@ -518,6 +532,7 @@ void gemm_packed_ab_register_blocked_impl(int M, int N, int K, T alpha,
   }
 }
 
+#if defined(GEMM_HAS_AVX2_FMA_INTRINSICS)
 template <BetaMode betaMode, int BM, int BN, int BK>
 void gemm_packed_ab_register_blocked_avx2_float_impl(
     int M, int N, int K, float alpha, const float *A, int lda, const float *B,
@@ -546,6 +561,7 @@ void gemm_packed_ab_register_blocked_avx2_float_impl(
     }
   }
 }
+#endif
 
 template <typename T, int BM, int BK>
 GEMM_NOINLINE
@@ -746,6 +762,7 @@ void gemm_packed_ab_register_blocked(int M, int N, int K, T alpha, const T *A,
 // Matrix multiplication: C = alpha * A * B + beta * C
 // Same interface as gemm_packed_ab_register_blocked, but specialized for
 // float and uses a 4x8 AVX2/FMA micro-kernel for full output tiles.
+#if defined(GEMM_HAS_AVX2_FMA_INTRINSICS)
 template <int BM = 64, int BN = 64, int BK = 64>
 void gemm_packed_ab_register_blocked_avx2_float(
     int M, int N, int K, float alpha, const float *A, int lda, const float *B,
@@ -773,6 +790,7 @@ void gemm_packed_ab_register_blocked_avx2_float(
       detail::BetaMode::General, BM, BN, BK>(M, N, K, alpha, A, lda, B, ldb,
                                              beta, C, ldc);
 }
+#endif
 
 // Matrix multiplication: C = alpha * A * B + beta * C
 // Same interface as gemm_packed_ab, but pre-packs all A block panels once.

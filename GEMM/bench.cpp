@@ -143,6 +143,7 @@ BENCHMARK(BM_gemm_packed_ab_register_blocked)
     ->Range(MIN, MAX)
     ->Complexity();
 
+#if defined(GEMM_HAS_AVX2_FMA_INTRINSICS)
 static void BM_gemm_packed_ab_register_blocked_avx2_float(
     benchmark::State &state) {
   int n = static_cast<int>(state.range(0));
@@ -168,6 +169,7 @@ BENCHMARK(BM_gemm_packed_ab_register_blocked_avx2_float)
     ->RangeMultiplier(2)
     ->Range(MIN, MAX)
     ->Complexity();
+#endif
 
 static void BM_gemm_packed_ab_prepack_a(benchmark::State &state) {
   int n = static_cast<int>(state.range(0));

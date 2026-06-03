@@ -1,13 +1,11 @@
 cmake_minimum_required(VERSION 3.18)
 project(CrossProductVecLen LANGUAGES CXX)
 
-# Only build executables if AVX2 is supported
-if(NOT AVX2_CPU_SUPPORTS)
-  message(WARNING "AVX2 is not supported - skipping CrossProductVecLen executables")
-  return()
+if(AVX2_CPU_SUPPORTS)
+  message(STATUS "AVX2 is supported - building CrossProductVecLen AVX2 targets")
+else()
+  message(STATUS "AVX2 is not supported - building CrossProductVecLen scalar targets only")
 endif()
-
-message(STATUS "AVX2 is supported - building CrossProductVecLen executables")
 
 # ============================================================================
 # Library
@@ -32,38 +30,40 @@ endfunction()
 # ============================================================================
 
 if(CXX_LEARNING_HAS_BENCHMARK AND CXX_LEARNING_HAS_GTEST)
-  # ElementWiseProductBench
-  add_executable(ElementWiseProductBench ElementWiseProductBench.cpp)
-  enable_cross_product_vec_len_target(ElementWiseProductBench)
-  target_link_libraries(ElementWiseProductBench PRIVATE
-    benchmark::benchmark
-    GTest::gtest_main
-    GTest::gmock_main
-    OpenMP::OpenMP_CXX
-    VectorOps
-  )
+  if(AVX2_CPU_SUPPORTS)
+    # ElementWiseProductBench
+    add_executable(ElementWiseProductBench ElementWiseProductBench.cpp)
+    enable_cross_product_vec_len_target(ElementWiseProductBench)
+    target_link_libraries(ElementWiseProductBench PRIVATE
+      benchmark::benchmark
+      GTest::gtest_main
+      GTest::gmock_main
+      OpenMP::OpenMP_CXX
+      VectorOps
+    )
 
-  # CrossProductLenBench
-  add_executable(CrossProductLenBench CrossProductLenBench.cpp)
-  enable_cross_product_vec_len_target(CrossProductLenBench)
-  target_link_libraries(CrossProductLenBench PRIVATE
-    benchmark::benchmark
-    GTest::gtest_main
-    GTest::gmock_main
-    OpenMP::OpenMP_CXX
-    VectorOps
-  )
+    # CrossProductLenBench
+    add_executable(CrossProductLenBench CrossProductLenBench.cpp)
+    enable_cross_product_vec_len_target(CrossProductLenBench)
+    target_link_libraries(CrossProductLenBench PRIVATE
+      benchmark::benchmark
+      GTest::gtest_main
+      GTest::gmock_main
+      OpenMP::OpenMP_CXX
+      VectorOps
+    )
 
-  # VectorOpsBench
-  add_executable(VectorOpsBench VectorOpsBench.cpp)
-  enable_cross_product_vec_len_target(VectorOpsBench)
-  target_link_libraries(VectorOpsBench PRIVATE
-    benchmark::benchmark
-    GTest::gtest_main
-    GTest::gmock_main
-    OpenMP::OpenMP_CXX
-    VectorOps
-  )
+    # VectorOpsBench
+    add_executable(VectorOpsBench VectorOpsBench.cpp)
+    enable_cross_product_vec_len_target(VectorOpsBench)
+    target_link_libraries(VectorOpsBench PRIVATE
+      benchmark::benchmark
+      GTest::gtest_main
+      GTest::gmock_main
+      OpenMP::OpenMP_CXX
+      VectorOps
+    )
+  endif()
 
   # fmaBench
   add_executable(fmaBench fmaBench.cpp)
