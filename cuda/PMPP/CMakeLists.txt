@@ -42,5 +42,6 @@ if(USE_CUDA)
 
     add_subdirectory(gemm)
     add_subdirectory(reduction)
+    add_subdirectory(bfs)
 
 endif(USE_CUDA)
