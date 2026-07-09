@@ -15,4 +15,26 @@ cudaError_t bfs_vertex_centric_top_down(const int *d_row_offsets,
                                         int *d_levels,
                                         cudaStream_t stream = nullptr);
 
+cudaError_t bfs_vertex_centric_bottom_up(const int *d_row_offsets,
+                                         const int *d_col_indices,
+                                         int num_vertices,
+                                         int source,
+                                         int *d_levels,
+                                         cudaStream_t stream = nullptr);
+
+cudaError_t bfs_edge_centric(const int *d_src_indices,
+                             const int *d_dst_indices,
+                             int num_vertices,
+                             int num_edges,
+                             int source,
+                             int *d_levels,
+                             cudaStream_t stream = nullptr);
+
+cudaError_t bfs_frontier_top_down(const int *d_row_offsets,
+                                  const int *d_col_indices,
+                                  int num_vertices,
+                                  int source,
+                                  int *d_levels,
+                                  cudaStream_t stream = nullptr);
+
 } // namespace pmpp::bfs

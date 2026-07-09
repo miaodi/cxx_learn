@@ -37,7 +37,7 @@ and modern C++ language techniques.
   stride, bank conflicts, permutation, graph transpose, Gram-Schmidt, sorting,
   and PMPP-style kernels.
 - `cuda/PMPP/`: CUDA programming exercises such as vector add, convolution,
-  reduction, merge, radix sort, and GPU GEMM.
+  reduction, scan, merge, radix sort, and GPU GEMM.
 - `misc/`: miscellaneous small experiments and utility examples.
 
 ## Build And Test

@@ -25,4 +25,13 @@ if(USE_CUDA)
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
     )
+
+    # Reduction practice executable
+    add_executable(reduction_practice reduction_practice.cu)
+    target_compile_features(reduction_practice PRIVATE cxx_std_17)
+    target_link_libraries(reduction_practice PRIVATE CUDA::cudart)
+    set_target_properties(reduction_practice PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+    )
 endif(USE_CUDA)

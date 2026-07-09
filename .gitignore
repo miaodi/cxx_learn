@@ -6,3 +6,4 @@
 /.clangd
 /.github
 /.cache
+/build-cuda

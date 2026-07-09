@@ -35,6 +35,10 @@ wrapper call plus synchronization. The wrapper initializes `levels` every
 iteration, so each benchmark repetition measures a complete BFS from a clean
 source state.
 
+The benchmark registers vertex-centric top-down, vertex-centric bottom-up,
+edge-centric, and frontier-based top-down variants. The additional variants are
+placeholders until their kernels are implemented.
+
 ## Why It Happens
 
 The simple PMPP version exposes the cost of scanning all vertices at every BFS
