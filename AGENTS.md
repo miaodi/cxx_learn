@@ -27,6 +27,9 @@ and modern C++ language techniques.
 - `CopyVsMemcpy/`, `SkipCopy/`, `BitProxy/`, `Pow/`, `Search/`: focused
   microbenchmarks for common C++ and performance questions.
 - `AssemblyStudy/`: small examples for inspecting generated assembly.
+- `CppTemplatesCompleteGuide/`: book-guided C++ template study notes and small
+  examples based on *C++ Templates: The Complete Guide*. The book's companion
+  source lives at <https://github.com/mpoullet/tmplbook/tree/master>.
 - `TemplateMetaprogramming/`, `TypeDeduction/`: modern C++ type-system and
   compile-time programming examples.
 - `TwoComplement/`: integer representation and low-level arithmetic examples.

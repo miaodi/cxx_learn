@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.18)
+
+project(CppTemplatesCompleteGuide LANGUAGES CXX)
+
+add_executable(cpp_templates_basics_max4 basics/max4.cpp)
+target_compile_features(cpp_templates_basics_max4 PRIVATE cxx_std_20)
+
+add_executable(cpp_templates_basics_fold_expressions basics/fold_expressions.cpp)
+target_compile_features(cpp_templates_basics_fold_expressions PRIVATE cxx_std_20)
+
+add_executable(cpp_templates_basics_index_sequence_get basics/index_sequence_get.cpp)
+target_compile_features(cpp_templates_basics_index_sequence_get PRIVATE cxx_std_20)
+
+add_executable(cpp_templates_scratch scratch/playground.cpp)
+target_compile_features(cpp_templates_scratch PRIVATE cxx_std_20)
+
+message(STATUS "C++ Templates: The Complete Guide examples configured")
