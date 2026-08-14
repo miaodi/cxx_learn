@@ -32,6 +32,8 @@ and modern C++ language techniques.
   source lives at <https://github.com/mpoullet/tmplbook/tree/master>.
 - `MiniTypeTraits/`: dependency-ordered exercises and compile-time tests for
   building a small `<type_traits>`-style library.
+- `ExpressionTemplatesAD/`: milestone-based expression-template exercises
+  progressing from typed equation trees through symbolic and forward-mode AD.
 - `TemplateMetaprogramming/`, `TypeDeduction/`: modern C++ type-system and
   compile-time programming examples.
 - `TwoComplement/`: integer representation and low-level arithmetic examples.

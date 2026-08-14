@@ -8,3 +8,5 @@
 /.cache
 /build-cuda
 /build-mini-traits
+/build-expr-ad
+/build-expr-ad-reference

@@ -187,9 +187,8 @@ if(CXX_LEARNING_BUILD_BENCHMARKS AND NOT CXX_LEARNING_HAS_BENCHMARK)
   message(STATUS "google/benchmark not found; benchmark targets will be skipped. Use -DCXX_LEARNING_FETCH_DEPS=ON to download it.")
 endif()
 
-if(CXX_LEARNING_HAS_GTEST)
-  enable_testing()
-endif()
+# Header-only and compile-time exercises use CTest without requiring GTest.
+enable_testing()
 
 # ============================================================================
 # CUDA Support
