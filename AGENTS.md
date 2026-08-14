@@ -30,6 +30,8 @@ and modern C++ language techniques.
 - `CppTemplatesCompleteGuide/`: book-guided C++ template study notes and small
   examples based on *C++ Templates: The Complete Guide*. The book's companion
   source lives at <https://github.com/mpoullet/tmplbook/tree/master>.
+- `MiniTypeTraits/`: dependency-ordered exercises and compile-time tests for
+  building a small `<type_traits>`-style library.
 - `TemplateMetaprogramming/`, `TypeDeduction/`: modern C++ type-system and
   compile-time programming examples.
 - `TwoComplement/`: integer representation and low-level arithmetic examples.

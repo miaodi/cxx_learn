@@ -13,5 +13,6 @@ target_compile_features(cpp_templates_basics_index_sequence_get PRIVATE cxx_std_
 
 add_executable(cpp_templates_scratch scratch/playground.cpp)
 target_compile_features(cpp_templates_scratch PRIVATE cxx_std_20)
+target_include_directories(cpp_templates_scratch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/scratch/include)
 
 message(STATUS "C++ Templates: The Complete Guide examples configured")

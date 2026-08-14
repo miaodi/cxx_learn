@@ -7,3 +7,4 @@
 /.github
 /.cache
 /build-cuda
+/build-mini-traits
