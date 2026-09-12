@@ -60,4 +60,10 @@ constexpr Dual<T> exp(Dual<T> input) {
   return {exponential, exponential * input.derivative};
 }
 
+template <typename T>
+constexpr Dual<T> log(Dual<T> input) {
+  using std::log;
+  return {log(input.value), input.derivative / input.value};
+}
+
 } // namespace expr_ad

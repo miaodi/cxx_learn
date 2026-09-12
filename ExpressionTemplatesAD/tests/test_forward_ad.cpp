@@ -21,14 +21,16 @@ int main() {
   static_assert(halved.value == 1.5);
   static_assert(halved.derivative == 0.5);
 
-  const auto expression = 2.0 + exp(x) * sin(x) + x * x;
+  const auto expression = 2.0 + exp(x) * sin(x) + x * x + log(x + 2.0);
   constexpr double point = 0.4;
 
   const auto dual_result = evaluate(expression, Dual<double>{point, 1.0});
   const double expected_value =
-      2.0 + std::exp(point) * std::sin(point) + point * point;
+      2.0 + std::exp(point) * std::sin(point) + point * point +
+      std::log(point + 2.0);
   const double expected_derivative =
-      std::exp(point) * (std::sin(point) + std::cos(point)) + 2.0 * point;
+      std::exp(point) * (std::sin(point) + std::cos(point)) + 2.0 * point +
+      1.0 / (point + 2.0);
 
   if (!near(dual_result.value, expected_value) ||
       !near(dual_result.derivative, expected_derivative)) {

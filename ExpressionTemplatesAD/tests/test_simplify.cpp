@@ -23,6 +23,10 @@ static_assert(std::same_as<simplified_t<SubtractZero>, Variable<0>>);
 using DivideOne = Divide<Variable<1>, One>;
 static_assert(std::same_as<simplified_t<DivideOne>, Variable<1>>);
 
+using NoisyLogarithm = Logarithm<Add<Zero, Variable<0>>>;
+static_assert(std::same_as<simplified_t<NoisyLogarithm>,
+                           Logarithm<Variable<0>>>);
+
 constexpr auto product_expression = x * y;
 constexpr auto product_dx = simplify(differentiate<0>(product_expression));
 static_assert(

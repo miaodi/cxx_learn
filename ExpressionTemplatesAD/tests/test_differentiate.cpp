@@ -65,5 +65,12 @@ int main() {
     return 1;
   }
 
+  const auto logarithm = differentiate<0>(log(x * x + 1.0));
+  const double expected_logarithm =
+      (2.0 * x_value) / (x_value * x_value + 1.0);
+  if (!near(evaluate(logarithm, x_value), expected_logarithm)) {
+    return 1;
+  }
+
   return 0;
 }

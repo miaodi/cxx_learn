@@ -37,15 +37,16 @@ endfunction()
 add_expr_ad_test(expr_ad_scaffold tests/test_scaffold.cpp)
 
 if(EXPR_AD_MILESTONE GREATER_EQUAL 1)
+  add_expr_ad_test(expr_ad_playground tests/test_playground.cpp)
   add_expr_ad_test(expr_ad_nodes tests/test_nodes.cpp)
 endif()
 
 if(EXPR_AD_MILESTONE GREATER_EQUAL 2)
-  add_expr_ad_test(expr_ad_operators tests/test_operators.cpp)
+  add_expr_ad_test(expr_ad_binary tests/test_binary.cpp)
 endif()
 
 if(EXPR_AD_MILESTONE GREATER_EQUAL 3)
-  add_expr_ad_test(expr_ad_functions tests/test_functions.cpp)
+  add_expr_ad_test(expr_ad_unary tests/test_unary.cpp)
 endif()
 
 if(EXPR_AD_MILESTONE GREATER_EQUAL 4)
