@@ -18,7 +18,9 @@ and modern C++ language techniques.
   experiments.
 - `Branch/`: branch prediction and control-flow performance examples.
 - `FalseSharing/`: cache coherence and shared-memory parallelism pitfalls.
-- `Atomic/`: atomics, memory ordering, and data-race demonstrations.
+- `Concurrency/`: shared-state and synchronization learning topics.
+  `Concurrency/AtomicMemoryModel/` contains atomics, memory ordering, and
+  data-race demonstrations.
 - `ParallelSort/`: parallel sorting and radix-sort experiments.
 - `GEMM/`: CPU matrix multiplication kernels progressing from naive loops to
   blocking, packing, register blocking, and SIMD variants.
@@ -88,7 +90,8 @@ ctest --test-dir build --output-on-failure
   ideas, split the code or explain the interaction explicitly.
 - For each new example directory, add a short `README.md` when practical. When a
   directory has multiple learning topics, use `README.md` as an index and put
-  detailed topic notes in `notes/*.md`, as in `IEEEFloat/` and `Atomic/`.
+  detailed topic notes in `notes/*.md`, as in `IEEEFloat/` and
+  `Concurrency/AtomicMemoryModel/`.
 - For existing example directories, update the local `README.md` when behavior,
   assumptions, run commands, or interpretation changes. If the directory uses a
   `notes/` subdirectory, update the relevant note and keep the README index in

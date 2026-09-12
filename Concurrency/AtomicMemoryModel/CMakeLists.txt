@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(Atomic LANGUAGES CXX)
+project(AtomicMemoryModel LANGUAGES CXX)
 
 find_package(Threads REQUIRED)
 

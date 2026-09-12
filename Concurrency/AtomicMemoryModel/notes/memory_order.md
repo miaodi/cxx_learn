@@ -21,13 +21,13 @@ cmake --build build --target memory_order_demo
 Run the demo:
 
 ```sh
-./build/Atomic/memory_order_demo
+./build/Concurrency/AtomicMemoryModel/memory_order_demo
 ```
 
 You can pass a larger iteration count for the relaxed litmus test:
 
 ```sh
-./build/Atomic/memory_order_demo 1000000
+./build/Concurrency/AtomicMemoryModel/memory_order_demo 1000000
 ```
 
 ## What To Look For

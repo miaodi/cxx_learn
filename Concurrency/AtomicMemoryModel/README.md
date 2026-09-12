@@ -1,4 +1,4 @@
-# Atomic Examples
+# Atomic Memory Model
 
 Small C++20 examples for atomics, memory ordering, data races, and
 happens-before relationships.
@@ -15,7 +15,7 @@ Build and run one standalone example:
 
 ```sh
 cmake --build build --target <target>
-./build/Atomic/<target>
+./build/Concurrency/AtomicMemoryModel/<target>
 ```
 
 ## Learning Map
